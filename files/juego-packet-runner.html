@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Packet Runner</title>
+<style>
+  html,body{margin:0;background:#05060a;color:#eef3f7;font-family:'Consolas','Courier New',monospace;}
+  .wrap{max-width:640px;margin:0 auto;padding:16px;text-align:center;}
+  h1{font-size:18px;letter-spacing:2px;color:#c400ff;margin:6px 0;}
+  p.sub{color:#8a93a3;font-size:12.5px;margin:0 0 12px;}
+  canvas{background:#0d1016;border:1px solid rgba(196,0,255,.3);border-radius:10px;box-shadow:0 0 30px rgba(196,0,255,.12);width:100%;max-width:600px;touch-action:none;}
+  .hud{display:flex;justify-content:space-between;font-size:13px;margin:10px 2px;color:#8a93a3;}
+  .hud b{color:#00ff88;}
+  .btn{background:linear-gradient(160deg,#00ff88,#00c46e);color:#04140b;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;margin-top:12px;font-family:inherit;}
+  #over{display:none;color:#ff2f4e;font-weight:bold;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📡 PACKET RUNNER</h1>
+  <p class="sub">Eres un paquete de datos viajando por la red. Salta (espacio / tap) para esquivar el <b style="color:#ff2f6e">malware ☣</b> y los <b style="color:#ffb020">firewalls 🧱</b>. Recolecta <b style="color:#00c8ff">📦</b> para sumar puntos.</p>
+  <div class="hud"><span>Puntos: <b id="score">0</b></span><span>Distancia: <b id="dist">0</b>m</span></div>
+  <canvas id="cv" width="600" height="260"></canvas>
+  <div id="over">CONEXIÓN PERDIDA — Game Over</div>
+  <button class="btn" id="restart">Reiniciar</button>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const W=cv.width,H=cv.height;
+const GROUND=H-40;
+let player, obstacles, bonuses, score, dist, speed, gameOver, spawnTimer;
+
+function reset(){
+  player={x:70,y:GROUND-28,w:28,h:28,vy:0,onGround:true};
+  obstacles=[]; bonuses=[]; score=0; dist=0; speed=220; gameOver=false; spawnTimer=0;
+  document.getElementById('over').style.display='none';
+  document.getElementById('score').textContent='0';
+  document.getElementById('dist').textContent='0';
+}
+reset();
+
+function saltar(){
+  if(gameOver){ reset(); return; }
+  if(player.onGround){ player.vy=-330; player.onGround=false; }
+}
+window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); saltar(); } });
+cv.addEventListener('mousedown', saltar);
+cv.addEventListener('touchstart', e=>{ e.preventDefault(); saltar(); }, {passive:false});
+
+function spawn(){
+  const tipo = Math.random();
+  if(tipo<0.42) obstacles.push({x:W+20, y:GROUND-26, w:26, h:26, tipo:'malware'});
+  else if(tipo<0.75) obstacles.push({x:W+20, y:GROUND-46, w:22, h:46, tipo:'firewall'});
+  else bonuses.push({x:W+20, y:GROUND-90-Math.random()*40, r:12});
+}
+
+function tick(dt){
+  if(gameOver) return;
+  const s = dt/1000;
+  dist += speed*s/10; document.getElementById('dist').textContent = Math.floor(dist);
+  speed += 4*s;
+
+  player.vy += 900*s; player.y += player.vy*s;
+  if(player.y >= GROUND-player.h){ player.y=GROUND-player.h; player.vy=0; player.onGround=true; }
+
+  spawnTimer += dt;
+  const spawnInterval = Math.max(650, 1400 - speed);
+  if(spawnTimer>=spawnInterval){ spawnTimer=0; spawn(); }
+
+  obstacles.forEach(o=>o.x -= speed*s);
+  bonuses.forEach(b=>b.x -= speed*s);
+  obstacles = obstacles.filter(o=>o.x+o.w>-20);
+  bonuses = bonuses.filter(b=>b.x>-20);
+
+  // colisiones
+  for(const o of obstacles){
+    if(player.x < o.x+o.w && player.x+player.w > o.x && player.y < o.y+o.h && player.y+player.h > o.y){
+      gameOver=true; document.getElementById('over').style.display='block';
+    }
+  }
+  for(let i=bonuses.length-1;i>=0;i--){
+    const b=bonuses[i];
+    const d=Math.hypot((player.x+player.w/2)-b.x, (player.y+player.h/2)-b.y);
+    if(d < 20+b.r){ score+=10; document.getElementById('score').textContent=score; bonuses.splice(i,1); }
+  }
+}
+
+function dibujar(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a0d12'; ctx.fillRect(0,0,W,H);
+  // linea de red (suelo)
+  ctx.strokeStyle='rgba(196,0,255,0.4)'; ctx.setLineDash([8,6]); ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,GROUND); ctx.lineTo(W,GROUND); ctx.stroke(); ctx.setLineDash([]);
+
+  // jugador (paquete de datos)
+  ctx.fillStyle='rgba(0,255,136,0.25)'; ctx.strokeStyle='#00ff88'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.roundRect(player.x,player.y,player.w,player.h,6); ctx.fill(); ctx.stroke();
+  ctx.font='16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#eef3f7'; ctx.fillText('📦', player.x+player.w/2, player.y+player.h/2+1);
+
+  obstacles.forEach(o=>{
+    ctx.font = o.tipo==='malware' ? '22px sans-serif' : '26px sans-serif';
+    ctx.fillStyle = o.tipo==='malware' ? '#ff2f6e' : '#ffb020';
+    ctx.fillText(o.tipo==='malware'?'☣':'🧱', o.x+o.w/2, o.y+o.h/2+2);
+  });
+  bonuses.forEach(b=>{
+    ctx.font='18px sans-serif'; ctx.fillStyle='#00c8ff';
+    ctx.fillText('📦', b.x, b.y);
+  });
+}
+
+let ultimo=performance.now();
+function loop(t){ const dt=t-ultimo; ultimo=t; tick(dt); dibujar(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+document.getElementById('restart').addEventListener('click', reset);
+</script>
+</body>
+</html>

@@ -47,6 +47,30 @@ COBRE = (190, 120, 70)
 VERDE_PCB = (30, 90, 55)
 DORADO = (200, 170, 60)
 
+# ------------------------------------------------------------------
+# INFO DE SISTEMAS OPERATIVOS (para la pantalla post-BIOS)
+# ------------------------------------------------------------------
+OS_INFO = {
+    "windows": {
+        "nombre": "Windows", "tagline": "El mas usado en casa y oficina",
+        "color": (90, 190, 240),
+        "desc": ["Hecho por Microsoft.", "Compatible con casi cualquier programa",
+                 "y con la mayoria de los videojuegos."],
+    },
+    "linux": {
+        "nombre": "Linux", "tagline": "Gratis y personalizable",
+        "color": (240, 200, 60),
+        "desc": ["Gratuito y de codigo abierto: cualquiera", "puede ver y modificar como funciona.",
+                 "El favorito para servidores de internet."],
+    },
+    "mac": {
+        "nombre": "macOS", "tagline": "Solo en computadoras Apple",
+        "color": (190, 130, 230),
+        "desc": ["Solo corre en computadoras Mac.", "Conocido por su diseno cuidado.",
+                 "Preferido por disenadores y editores de video."],
+    },
+}
+
 pygame.init()
 try:
     pygame.mixer.init(frequency=44100, size=-16, channels=1)
@@ -420,7 +444,8 @@ class Cable:
 # JUEGO PRINCIPAL
 # ------------------------------------------------------------------
 class Game:
-    ESTADOS = ("MENU", "JUGANDO", "ENCENDIENDO", "BIOS", "BENCHMARK", "FALLO", "EXPLOSION")
+    ESTADOS = ("MENU", "JUGANDO", "ENCENDIENDO", "BIOS", "SELECCION_SO", "ESCRITORIO",
+               "BENCHMARK", "FALLO", "EXPLOSION")
 
     def __init__(self):
         self.estado = "MENU"
@@ -433,6 +458,9 @@ class Game:
         self.shake = 0.0
         self.timer_estado = 0.0
         self.fps_benchmark_mostrado = 0
+        self.sistema_operativo = None   # "windows" | "linux" | "mac", elegido tras la BIOS
+        self.botones_so = {}            # rects clickeables de la pantalla de eleccion de SO
+        self.mostrar_glosario = False   # overlay de ayuda BIOS/SO, se abre/cierra con [H]
         self.reiniciar_partida()
 
     # -------------------- SETUP --------------------
@@ -443,6 +471,8 @@ class Game:
         self.mensaje_error = ""
         self.timer_estado = 0.0
         self.lever_abierto = True
+        self.sistema_operativo = None
+        self.botones_so = {}
 
         # --- Gabinete / motherboard ---
         self.case_rect = pygame.Rect(190, 100, 860, 470)
@@ -553,6 +583,16 @@ class Game:
                 sys.exit()
             if ev.key == pygame.K_r:
                 self.reiniciar_partida()
+            if ev.key == pygame.K_h:
+                self.mostrar_glosario = not self.mostrar_glosario
+            return
+
+        if self.estado == "SELECCION_SO":
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                for clave, rect in self.botones_so.items():
+                    if rect.collidepoint(ev.pos):
+                        self.elegir_sistema_operativo(clave)
+                        return
             return
 
         if self.estado != "JUGANDO":
@@ -690,6 +730,15 @@ class Game:
         self.timer_estado = 0.0
         sonar(SND_POWERON)
 
+    def elegir_sistema_operativo(self, clave):
+        """Se llama al hacer click en uno de los 3 botones de la pantalla
+        de seleccion de SO (Windows/Linux/macOS) que aparece tras la BIOS."""
+        self.sistema_operativo = clave
+        self.estado = "ESCRITORIO"
+        self.timer_estado = 0.0
+        sonar(SND_SNAP)
+        self.flash(f"Iniciando {OS_INFO[clave]['nombre']}...")
+
     # -------------------- UPDATE --------------------
     def actualizar(self, dt):
         self.tiempo += dt
@@ -715,6 +764,12 @@ class Game:
         elif self.estado == "BIOS":
             self.timer_estado += dt
             if self.timer_estado >= 2.6:
+                self.estado = "SELECCION_SO"
+                self.timer_estado = 0.0
+
+        elif self.estado == "ESCRITORIO":
+            self.timer_estado += dt
+            if self.timer_estado >= 1.8:
                 self.estado = "BENCHMARK"
                 self.timer_estado = 0.0
 
@@ -753,17 +808,24 @@ class Game:
         self.dibujar_panel_frontal(capa)
         self.dibujar_ui(capa)
 
-        if self.estado in ("ENCENDIENDO", "BIOS", "BENCHMARK"):
+        if self.estado in ("ENCENDIENDO", "BIOS", "SELECCION_SO", "ESCRITORIO", "BENCHMARK"):
             self.dibujar_rgb(capa)
 
         if self.estado == "BIOS":
             self.dibujar_bios(capa)
+        elif self.estado == "SELECCION_SO":
+            self.dibujar_seleccion_so(capa)
+        elif self.estado == "ESCRITORIO":
+            self.dibujar_escritorio(capa)
         elif self.estado == "BENCHMARK":
             self.dibujar_benchmark(capa)
         elif self.estado == "FALLO":
             self.dibujar_fallo(capa)
         elif self.estado == "EXPLOSION":
             self.dibujar_explosion(capa)
+
+        if self.mostrar_glosario:
+            self.dibujar_glosario(capa)
 
         sup.blit(capa, offset)
 
@@ -915,7 +977,7 @@ class Game:
             sup.blit(s, (0, ALTO - 40))
             dibujar_texto(sup, self.mensaje_flash, fuente_normal, BLANCO, (ANCHO // 2, ALTO - 23), centrado=True)
 
-        dibujar_texto(sup, "[R] Reiniciar   [ESC] Salir", fuente_chica, GRIS, (ANCHO - 190, 8))
+        dibujar_texto(sup, "[H] BIOS/SO   [R] Reiniciar   [ESC] Salir", fuente_chica, GRIS, (ANCHO - 300, 8))
 
     def dibujar_bios(self, sup):
         s = pygame.Surface((ANCHO, ALTO))
@@ -929,6 +991,11 @@ class Game:
             "",
             "Presiona SUPR para entrar a Setup",
             "Arrancando desde SSD NVMe...",
+            "",
+            "La BIOS es el primer programa que corre la PC:",
+            "revisa que cada pieza responda ANTES de dejar",
+            "entrar al Sistema Operativo (como un portero que",
+            "revisa todo antes de abrir la puerta).",
         ]
         y = 220
         for linea in lineas:
@@ -936,10 +1003,122 @@ class Game:
             y += 30
         sup.blit(s, (0, 0))
 
+    def dibujar_seleccion_so(self, sup):
+        s = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 200))
+        dibujar_texto(s, "La BIOS encontro el disco de arranque (SSD).", fuente_grande, BLANCO,
+                      (ANCHO // 2, 130), centrado=True)
+        dibujar_texto(s, "Elige que Sistema Operativo quieres iniciar:", fuente_normal, GRIS_CLARO,
+                      (ANCHO // 2, 168), centrado=True)
+
+        ancho_btn, alto_btn, espacio = 260, 220, 40
+        total = ancho_btn * 3 + espacio * 2
+        x0 = ANCHO // 2 - total // 2
+        y0 = 220
+        self.botones_so = {}
+        for i, clave in enumerate(("windows", "linux", "mac")):
+            info = OS_INFO[clave]
+            rect = pygame.Rect(x0 + i * (ancho_btn + espacio), y0, ancho_btn, alto_btn)
+            self.botones_so[clave] = rect
+            pygame.draw.rect(s, (25, 28, 34), rect, border_radius=14)
+            pygame.draw.rect(s, info["color"], rect, 3, border_radius=14)
+            dibujar_texto(s, info["nombre"], fuente_grande, info["color"], (rect.centerx, rect.y + 34),
+                          centrado=True)
+            dibujar_texto(s, info["tagline"], fuente_chica, BLANCO, (rect.centerx, rect.y + 64), centrado=True)
+            y = rect.y + 96
+            for linea in info["desc"]:
+                dibujar_texto(s, linea, fuente_chica, GRIS_CLARO, (rect.centerx, y), centrado=True)
+                y += 20
+            dibujar_texto(s, "[ Click para elegir ]", fuente_chica, info["color"], (rect.centerx, rect.bottom - 18),
+                          centrado=True)
+        dibujar_texto(s, "[H] ?Que es el Sistema Operativo? (ayuda)", fuente_chica, GRIS_CLARO,
+                      (ANCHO // 2, ALTO - 30), centrado=True)
+        sup.blit(s, (0, 0))
+
+    def dibujar_escritorio(self, sup):
+        clave = self.sistema_operativo
+        info = OS_INFO.get(clave, OS_INFO["windows"])
+        s = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+        s.fill((10, 14, 22, 235))
+        dibujar_texto(s, f"Escritorio de {info['nombre']}", fuente_titulo, info["color"], (ANCHO // 2, 150),
+                      centrado=True)
+        dibujar_texto(s, "El Sistema Operativo es el 'gerente' de la PC:", fuente_normal, BLANCO,
+                      (ANCHO // 2, 220), centrado=True)
+        dibujar_texto(s, "organiza tus archivos y le habla a cada pieza por ti.", fuente_normal, BLANCO,
+                      (ANCHO // 2, 246), centrado=True)
+
+        if clave == "windows":
+            barra = pygame.Rect(ANCHO // 2 - 260, 420, 520, 46)
+            pygame.draw.rect(s, (10, 30, 46), barra, border_radius=8)
+            pygame.draw.rect(s, info["color"], (barra.x + 14, barra.y + 13, 20, 20), border_radius=4)
+            dibujar_texto(s, "Inicio", fuente_normal, info["color"], (barra.x + 44, barra.y + 12))
+            dibujar_texto(s, "12:34", fuente_normal, GRIS_CLARO, (barra.right - 66, barra.y + 12))
+        elif clave == "linux":
+            term = pygame.Rect(ANCHO // 2 - 260, 400, 520, 90)
+            pygame.draw.rect(s, (8, 8, 8), term, border_radius=6)
+            pygame.draw.rect(s, info["color"], term, 2, border_radius=6)
+            dibujar_texto(s, "user@buildmaster:~$ _", fuente_mono, info["color"], (term.x + 16, term.y + 16))
+        else:
+            dock = pygame.Rect(ANCHO // 2 - 180, 420, 360, 60)
+            pygame.draw.rect(s, (255, 255, 255, 40), dock, border_radius=30)
+            for i, c in enumerate([(90, 170, 250), (250, 190, 80), (120, 220, 140), (230, 120, 190)]):
+                cx = dock.x + 50 + i * 70
+                pygame.draw.rect(s, c, (cx - 18, dock.centery - 18, 36, 36), border_radius=8)
+        sup.blit(s, (0, 0))
+
+    def dibujar_glosario(self, sup):
+        """Overlay de ayuda: que es la BIOS, como funciona el SO, y diferencias
+        entre Windows/Linux/macOS. Se abre/cierra con la tecla [H] en cualquier momento."""
+        s = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 225))
+        panel = pygame.Rect(140, 50, ANCHO - 280, ALTO - 100)
+        pygame.draw.rect(s, (16, 20, 26), panel, border_radius=16)
+        pygame.draw.rect(s, VERDE, panel, 2, border_radius=16)
+        dibujar_texto(s, "QUE ES LA BIOS Y EL SISTEMA OPERATIVO", fuente_grande, VERDE,
+                      (panel.centerx, panel.y + 30), centrado=True)
+
+        lineas = [
+            ("BIOS:", VERDE),
+            ("Es el primer programa que corre la PC al encender, antes que", BLANCO),
+            ("Windows, Linux o macOS. Revisa que el CPU, la RAM y las demas", BLANCO),
+            ("piezas respondan bien. Es como el portero de un edificio: revisa", BLANCO),
+            ("que todo este en orden antes de dejar pasar al Sistema Operativo.", BLANCO),
+            ("", BLANCO),
+            ("SISTEMA OPERATIVO:", VERDE),
+            ("Cuando la BIOS confirma que el hardware esta bien, el Sistema", BLANCO),
+            ("Operativo toma el control: organiza tus archivos, deja que abras", BLANCO),
+            ("programas, y le habla a cada pieza de hardware por ti. Es el", BLANCO),
+            ("'gerente' de toda la casa.", BLANCO),
+            ("", BLANCO),
+            ("WINDOWS:", AZUL),
+            ("El mas usado en casa y oficina. Compatible con casi cualquier", BLANCO),
+            ("programa y videojuego. Lo hace Microsoft.", BLANCO),
+            ("", BLANCO),
+            ("LINUX:", AMARILLO),
+            ("Gratuito y de codigo abierto: cualquiera puede ver y modificar", BLANCO),
+            ("como funciona por dentro. Favorito para servidores de internet.", BLANCO),
+            ("", BLANCO),
+            ("MACOS:", VIOLETA),
+            ("Solo corre en computadoras Apple (Mac). Conocido por su diseno", BLANCO),
+            ("cuidado; preferido por disenadores y editores de video.", BLANCO),
+        ]
+        y = panel.y + 68
+        for texto, color in lineas:
+            if texto:
+                dibujar_texto(s, texto, fuente_chica, color, (panel.x + 30, y))
+            y += 21
+
+        dibujar_texto(s, "[H] Cerrar", fuente_chica, GRIS_CLARO, (panel.centerx, panel.bottom - 22), centrado=True)
+        sup.blit(s, (0, 0))
+
     def dibujar_benchmark(self, sup):
         s = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
         s.fill((0, 0, 0, 210))
-        dibujar_texto(s, "¡SISTEMA ENCENDIDO CON ÉXITO!", fuente_titulo, VERDE, (ANCHO // 2, 200), centrado=True)
+        dibujar_texto(s, "¡SISTEMA ENCENDIDO CON ÉXITO!", fuente_titulo, VERDE, (ANCHO // 2, 190), centrado=True)
+        if self.sistema_operativo:
+            info = OS_INFO[self.sistema_operativo]
+            dibujar_texto(s, f"Sistema Operativo: {info['nombre']}", fuente_normal, info["color"],
+                          (ANCHO // 2, 232), centrado=True)
         dibujar_texto(s, f"FPS del benchmark: {self.fps_benchmark_mostrado}", fuente_grande, BLANCO,
                       (ANCHO // 2, 280), centrado=True)
         puntaje = self.fps_benchmark_mostrado * 100 + self.puntaje_estetico

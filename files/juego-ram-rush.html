@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAM Rush — Administra la memoria</title>
+<style>
+  html,body{margin:0;background:#05060a;color:#eef3f7;font-family:'Consolas','Courier New',monospace;}
+  .wrap{max-width:520px;margin:0 auto;padding:16px;text-align:center;}
+  h1{font-size:18px;letter-spacing:2px;color:#00ff88;margin:6px 0;}
+  p.sub{color:#8a93a3;font-size:12.5px;margin:0 0 12px;}
+  canvas{background:#0d1016;border:1px solid rgba(0,255,136,.25);border-radius:10px;box-shadow:0 0 30px rgba(0,255,136,.12);touch-action:none;}
+  .hud{display:flex;justify-content:space-between;font-size:13px;margin:10px 2px;color:#8a93a3;}
+  .hud b{color:#00ff88;}
+  .btn{background:linear-gradient(160deg,#00ff88,#00c46e);color:#04140b;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;margin-top:12px;font-family:inherit;}
+  .controls{display:flex;justify-content:center;gap:10px;margin-top:10px;}
+  .ctl{width:56px;height:56px;border-radius:10px;background:#141a24;border:1px solid rgba(255,255,255,.1);color:#00ff88;font-size:22px;display:flex;align-items:center;justify-content:center;user-select:none;}
+  #over{display:none;color:#ff2f4e;font-weight:bold;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧠 RAM RUSH</h1>
+  <p class="sub">Los programas caen y ocupan RAM. Acomódalos con ← → y ↓ para bajar rápido. Si la memoria se llena hasta arriba... "sin memoria disponible".</p>
+  <div class="hud"><span>Puntos: <b id="score">0</b></span><span>Memoria libre: <b id="mem">100%</b></span></div>
+  <canvas id="cv" width="280" height="440"></canvas>
+  <div class="controls">
+    <div class="ctl" id="btnL">◀</div>
+    <div class="ctl" id="btnD">▼</div>
+    <div class="ctl" id="btnR">▶</div>
+  </div>
+  <div id="over">Sin memoria disponible (OUT OF MEMORY)</div>
+  <button class="btn" id="restart">Reiniciar</button>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const COLS=7, ROWS=11, CELL=40;
+let grid, score, gameOver, dropTimer, dropInterval, piece;
+
+// piezas: bloques de 1-3 celdas de ancho, 1 celda alto (representan "procesos" livianos)
+// y algunas en forma de L pequeña (representan procesos pesados)
+const FORMAS=[
+  [[0,0]], [[0,0],[1,0]], [[0,0],[1,0],[2,0]],
+  [[0,0],[0,1]], [[0,0],[1,0],[0,1]], [[0,0],[1,0],[1,1]]
+];
+const COLORES=['#00ff88','#00c8ff','#ffb020','#ff2f6e','#c400ff','#4de1a0'];
+
+function nuevaPieza(){
+  const idx=Math.floor(Math.random()*FORMAS.length);
+  return { celdas: FORMAS[idx].map(c=>c.slice()), color: COLORES[idx], x: Math.floor(COLS/2)-1, y:0 };
+}
+function reset(){
+  grid = Array.from({length:ROWS}, () => Array(COLS).fill(null));
+  score=0; gameOver=false; dropInterval=650;
+  piece = nuevaPieza();
+  document.getElementById('over').style.display='none';
+  document.getElementById('score').textContent='0';
+}
+reset();
+
+function colision(p, dx, dy){
+  return p.celdas.some(([cx,cy])=>{
+    const nx=p.x+cx+dx, ny=p.y+cy+dy;
+    if(nx<0||nx>=COLS||ny>=ROWS) return true;
+    if(ny>=0 && grid[ny][nx]) return true;
+    return false;
+  });
+}
+function fijarPieza(){
+  piece.celdas.forEach(([cx,cy])=>{
+    const nx=piece.x+cx, ny=piece.y+cy;
+    if(ny>=0) grid[ny][nx]=piece.color;
+  });
+  // limpiar filas completas ("libera memoria")
+  let limpiadas=0;
+  for(let y=ROWS-1;y>=0;y--){
+    if(grid[y].every(c=>c)){
+      grid.splice(y,1); grid.unshift(Array(COLS).fill(null)); limpiadas++; y++;
+    }
+  }
+  if(limpiadas>0){ score += limpiadas*limpiadas*50; document.getElementById('score').textContent=score; dropInterval=Math.max(220,dropInterval-15); }
+  piece = nuevaPieza();
+  if(colision(piece,0,0)){ gameOver=true; document.getElementById('over').style.display='block'; }
+}
+function mover(dx){ if(!gameOver && !colision(piece,dx,0)) piece.x+=dx; }
+function bajarRapido(){ if(gameOver) return; while(!colision(piece,0,1)) piece.y++; fijarPieza(); }
+function tick(dt){
+  if(gameOver) return;
+  dropTimer=(dropTimer||0)+dt;
+  if(dropTimer>=dropInterval){
+    dropTimer=0;
+    if(!colision(piece,0,1)) piece.y++; else fijarPieza();
+  }
+}
+function memoriaLibrePct(){
+  let ocupadas=0; grid.forEach(row=>row.forEach(c=>{ if(c) ocupadas++; }));
+  return Math.round(100*(1 - ocupadas/(ROWS*COLS)));
+}
+function dibujar(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.fillStyle='#0a0d12'; ctx.fillRect(0,0,cv.width,cv.height);
+  for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.strokeRect(x*CELL,y*CELL,CELL,CELL);
+    if(grid[y][x]){ ctx.fillStyle=grid[y][x]; ctx.fillRect(x*CELL+2,y*CELL+2,CELL-4,CELL-4); }
+  }
+  if(!gameOver){
+    ctx.fillStyle=piece.color;
+    piece.celdas.forEach(([cx,cy])=>{
+      const px=(piece.x+cx)*CELL, py=(piece.y+cy)*CELL;
+      if(py>=0) ctx.fillRect(px+2,py+2,CELL-4,CELL-4);
+    });
+  }
+  document.getElementById('mem').textContent = memoriaLibrePct()+'%';
+}
+let ultimo=performance.now();
+function loop(t){ const dt=t-ultimo; ultimo=t; tick(dt); dibujar(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+window.addEventListener('keydown', e=>{
+  if(e.key==='ArrowLeft') mover(-1);
+  else if(e.key==='ArrowRight') mover(1);
+  else if(e.key==='ArrowDown') bajarRapido();
+});
+document.getElementById('btnL').addEventListener('click',()=>mover(-1));
+document.getElementById('btnR').addEventListener('click',()=>mover(1));
+document.getElementById('btnD').addEventListener('click',bajarRapido);
+document.getElementById('restart').addEventListener('click',reset);
+</script>
+</body>
+</html>

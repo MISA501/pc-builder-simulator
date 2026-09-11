@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMI BIOS Setup Utility - Mini Game</title>
+    <style>
+        body {
+            background-color: #0000aa;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+        #bios-container {
+            width: 800px;
+            height: 500px;
+            border: 4px ridge #aaaaaa;
+            background-color: #0000aa;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            position: relative;
+        }
+        .header {
+            text-align: center;
+            font-weight: bold;
+            border-bottom: 2px dashed #ffff55;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            color: #ffff55;
+        }
+        .content {
+            display: flex;
+            flex: 1;
+        }
+        .menu-left {
+            width: 45%;
+            border-right: 2px dashed #ffff55;
+            padding-right: 10px;
+        }
+        .menu-right {
+            width: 55%;
+            padding-left: 15px;
+            font-size: 14px;
+            color: #aaaaaa;
+        }
+        .menu-item {
+            padding: 4px;
+            margin: 4px 0;
+            cursor: pointer;
+        }
+        .menu-item.selected {
+            background-color: #aaaaaa;
+            color: #0000aa;
+            font-weight: bold;
+        }
+        .footer {
+            border-top: 2px dashed #ffff55;
+            padding-top: 8px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            color: #ffff55;
+        }
+        .modal-post {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+            box-sizing: border-box;
+            display: none;
+            z-index: 10;
+            white-space: pre-line;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="bios-container">
+        <div class="header">
+            <div>CMOS Setup Utility - Copyright (C) 1982-2024 American Megatrends, Inc.</div>
+            <div id="status-mission" style="color: #ff5555; font-size: 13px; margin-top: 5px;">
+                ¡ALERTA! El sistema no arranca. Configura la BIOS correctamente para salvar el equipo.
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="menu-left">
+                <div class="menu-item selected" id="opt-0">1. Primary Boot Device: <span id="val-boot" style="color:ffff55">CD-ROM (Dañado)</span></div>
+                <div class="menu-item" id="opt-1">2. CPU Frequency: <span id="val-cpu" style="color:ffff55">4.8 GHz (¡Inestable!)</span></div>
+                <div class="menu-item" id="opt-2">3. Secure Boot: <span id="val-secure" style="color:ffff55">Disabled</span></div>
+                <div class="menu-item" id="opt-3">4. Save & Exit Setup</div>
+            </div>
+            <div class="menu-right" id="help-text">
+                Usa las flechas **ARRIBA / ABAJO** para moverte y **ENTER** o **ESPACIO** para cambiar los valores de cada opción. Cuando creas que está listo, ve a "Save & Exit" y presiona **Enter**.
+            </div>
+        </div>
+
+        <div class="footer">
+            <span>↑↓: Seleccionar | Enter: Cambiar Valor | F10: Guardar y Salir</span>
+            <span>AMI - BIOS v2.51</span>
+        </div>
+
+        <!-- Pantalla de POST / Arranque -->
+        <div id="post-screen" class="modal-post"></div>
+    </div>
+
+    <script>
+        let selectedIndex = 0;
+        
+        // Estado del hardware virtual
+        let config = {
+            bootDevice: 0, // 0: CD-ROM (Mal), 1: NVMe SSD M.2 (Bien)
+            cpuFreq: 0,    // 0: 4.8 GHz (Mal/Crash), 1: 3.6 GHz Stock (Bien)
+            secureBoot: 0  // 0: Disabled, 1: Enabled (Opcional)
+        };
+
+        const bootOptions = ["CD-ROM (Dañado)", "NVMe SSD M.2 (Sistema)"];
+        const cpuOptions = ["4.8 GHz (¡Inestable!)", "3.6 GHz (Normal/Estable)"];
+        const secureOptions = ["Disabled", "Enabled"];
+
+        const helpTexts = [
+            "Selecciona el disco duro principal donde está instalado el sistema operativo Windows/Linux.",
+            "La frecuencia del procesador. Un valor muy alto causa pantallazos azules (BSOD).",
+            "Permite o bloquea la carga de firmwares y sistemas operativos firmados.",
+            "Guarda los cambios actuales en la memoria CMOS y reinicia el equipo."
+        ];
+
+        function updateView() {
+            for (let i = 0; i < 4; i++) {
+                const el = document.getElementById(`opt-${i}`);
+                if (i === selectedIndex) {
+                    el.classList.add('selected');
+                    document.getElementById('help-text').innerText = helpTexts[i];
+                } else {
+                    el.classList.remove('selected');
+                }
+            }
+
+            document.getElementById('val-boot').innerText = bootOptions[config.bootDevice];
+            document.getElementById('val-cpu').innerText = cpuOptions[config.cpuFreq];
+            document.getElementById('val-secure').innerText = secureOptions[config.secureBoot];
+        }
+
+        function toggleOption() {
+            if (selectedIndex === 0) {
+                config.bootDevice = 1 - config.bootDevice;
+            } else if (selectedIndex === 1) {
+                config.cpuFreq = 1 - config.cpuFreq;
+            } else if (selectedIndex === 2) {
+                config.secureBoot = 1 - config.secureBoot;
+            } else if (selectedIndex === 3) {
+                intentarBoot();
+            }
+            updateView();
+        }
+
+        function intentarBoot() {
+            const postScreen = document.getElementById('post-screen');
+            postScreen.style.display = 'block';
+            postScreen.innerHTML = "Iniciando secuencia POST...\nDetectando memoria RAM... 32GB OK\nChecando dispositivos de almacenamiento...\n";
+
+            setTimeout(() => {
+                if (config.bootDevice === 0) {
+                    postScreen.innerHTML += "\n[ERROR CRÍTICO]: No bootable medium found. Insert system disk and press any key.";
+                    setTimeout(() => { postScreen.style.display = 'none'; }, 3000);
+                } else if (config.cpuFreq === 0) {
+                    postScreen.innerHTML += "\n[WARNING]: CPU Overclock failed. Voltage too low.\n*** PANTALLAZO AZUL (BSOD): CLOCK_WATCHDOG_TIMEOUT ***";
+                    setTimeout(() => { postScreen.style.display = 'none'; }, 3000);
+                } else {
+                    postScreen.innerHTML += "\nBooting OS from NVMe SSD M.2...\n¡Cargando Kernel de Linux / Windows...\n\n¡EXCELENTE TRABAJO! El equipo ha encendido con éxito. ¡Has ganado!";
+                    postScreen.style.color = "#00ff82";
+                }
+            }, 1500);
+        }
+
+        // Control por teclado
+        window.addEventListener('keydown', (e) => {
+            if (document.getElementById('post-screen').style.display === 'block') return;
+
+            if (e.key === 'ArrowUp') {
+                selectedIndex = (selectedIndex - 1 + 4) % 4;
+                updateView();
+            } else if (e.key === 'ArrowDown') {
+                selectedIndex = (selectedIndex + 1) % 4;
+                updateView();
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleOption();
+            } else if (e.key === 'F10') {
+                e.preventDefault();
+                selectedIndex = 3;
+                updateView();
+                intentarBoot();
+            }
+        });
+
+        updateView();
+    </script>
+</body>
+</html>

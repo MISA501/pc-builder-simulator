@@ -482,7 +482,27 @@ canvas#particles{
 </style>
 </head>
 <body>
-<button onclick="window.location.href='/jugar'">Jugar 2D</button>
+<div class="topbar-actions">
+  <!-- Tus botones anteriores -->
+  <button class="btn" id="btn-tutorial">📘 Tutorial</button>
+  
+  <!-- NUEVO BOTÓN PARA MÁS JUEGOS -->
+<div style="position: relative; display: inline-block;">
+  <button class="btn" id="btn-mas-juegos">🎮 Más Juegos ▼</button>
+  
+  <!-- Menú oculto con la lista de tus juegos -->
+<div id="menu-juegos" class="hidden" style="position: absolute; right: 0; top: 110%; background: #0d1016; border: 1px solid rgba(255,255,255,0.08); padding: 8px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; min-width: 200px;">
+  <a href="../files/bios.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">BIOS</a>
+  <a href="../files/juego-cable-match.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Cable Match</a>
+  <a href="../files/juego-debug-hunter.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Debug Hunter</a>
+  <a href="../files/juego-firewall-defense.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Firewall Defense</a>
+  <a href="../files/juego-packet-runner.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Packet Runner</a>
+  <a href="../files/juego-ram-rush.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">RAM Rush</a>
+  <a href="../files/linux_game.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Linux Game</a>
+  <a href="../files/macos_game.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Macos Game</a>
+  <a href="../files/pc-builder-pro-2d.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">PC Builder Pro 2D</a>
+</div>
+</div>
 <canvas id="particles"></canvas>
 
 <div class="app">

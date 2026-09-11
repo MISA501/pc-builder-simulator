@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firewall Defense</title>
+<style>
+  html,body{margin:0;background:#05060a;color:#eef3f7;font-family:'Consolas','Courier New',monospace;}
+  .wrap{max-width:560px;margin:0 auto;padding:16px;text-align:center;}
+  h1{font-size:18px;letter-spacing:2px;color:#ff2f6e;margin:6px 0;}
+  p.sub{color:#8a93a3;font-size:12.5px;margin:0 0 12px;}
+  canvas{background:#0d1016;border:1px solid rgba(255,47,110,.3);border-radius:10px;box-shadow:0 0 30px rgba(255,47,110,.12);width:100%;max-width:520px;touch-action:none;}
+  .hud{display:flex;justify-content:space-between;font-size:13px;margin:10px 2px;color:#8a93a3;}
+  .hud b{color:#00ff88;}
+  .btn{background:linear-gradient(160deg,#00ff88,#00c46e);color:#04140b;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;margin-top:12px;font-family:inherit;}
+  #over{display:none;color:#ff2f4e;font-weight:bold;margin-top:8px;}
+  .legend{font-size:12px;color:#8a93a3;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛡️ FIREWALL DEFENSE</h1>
+  <p class="sub">Paquetes de datos caen hacia el servidor. Haz click en el <b style="color:#ff2f6e">malware ☣</b> antes de que llegue, pero deja pasar los <b style="color:#00c8ff">datos limpios 📦</b> — si clickeas uno bueno pierdes vidas.</p>
+  <div class="hud"><span>Puntos: <b id="score">0</b></span><span>Vidas: <b id="lives">3</b></span></div>
+  <canvas id="cv" width="520" height="420"></canvas>
+  <div class="legend">☣ = malware (click) &nbsp;&nbsp; 📦 = dato limpio (no lo toques)</div>
+  <div id="over">SERVIDOR COMPROMETIDO — Game Over</div>
+  <button class="btn" id="restart">Reiniciar</button>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let W=cv.width, H=cv.height;
+let packets, score, lives, gameOver, spawnTimer, spawnInterval, speed;
+
+function reset(){
+  packets=[]; score=0; lives=3; gameOver=false; spawnTimer=0; spawnInterval=1100; speed=70;
+  document.getElementById('over').style.display='none';
+  document.getElementById('score').textContent='0';
+  document.getElementById('lives').textContent='3';
+}
+reset();
+
+function spawn(){
+  const malware = Math.random()<0.45;
+  packets.push({
+    x: 40+Math.random()*(W-80), y:-20,
+    malware, r:18,
+    vy: speed + Math.random()*30
+  });
+}
+function tick(dt){
+  if(gameOver) return;
+  spawnTimer+=dt;
+  if(spawnTimer>=spawnInterval){ spawnTimer=0; spawn(); spawnInterval=Math.max(500,spawnInterval-12); speed+=1.2; }
+  packets.forEach(p=>p.y+=p.vy*dt/1000);
+  packets = packets.filter(p=>{
+    if(p.y > H-50){
+      if(p.malware){ lives--; document.getElementById('lives').textContent=lives; if(lives<=0){ gameOver=true; document.getElementById('over').style.display='block'; } }
+      else { score+=5; document.getElementById('score').textContent=score; }
+      return false;
+    }
+    return true;
+  });
+}
+function dibujar(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a0d12'; ctx.fillRect(0,0,W,H);
+  // servidor abajo
+  ctx.fillStyle='rgba(0,255,136,0.08)'; ctx.fillRect(0,H-50,W,50);
+  ctx.strokeStyle='#00ff88'; ctx.strokeRect(0,H-50,W,50);
+  ctx.fillStyle='#00ff88'; ctx.font='13px Consolas'; ctx.textAlign='center';
+  ctx.fillText('SERVIDOR', W/2, H-25);
+
+  packets.forEach(p=>{
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle = p.malware ? 'rgba(255,47,110,0.25)' : 'rgba(0,200,255,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = p.malware ? '#ff2f6e' : '#00c8ff';
+    ctx.lineWidth=2; ctx.stroke();
+    ctx.font='18px sans-serif'; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(p.malware?'☣':'📦', p.x, p.y+1);
+  });
+}
+function loopTick(t,last){ }
+let ultimo=performance.now();
+function loop(t){ const dt=t-ultimo; ultimo=t; tick(dt); dibujar(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+function clickAt(x,y){
+  if(gameOver) return;
+  for(let i=packets.length-1;i>=0;i--){
+    const p=packets[i]; const d=Math.hypot(x-p.x,y-p.y);
+    if(d<=p.r+6){
+      if(p.malware){ score+=15; document.getElementById('score').textContent=score; }
+      else { lives--; document.getElementById('lives').textContent=lives; if(lives<=0){ gameOver=true; document.getElementById('over').style.display='block'; } }
+      packets.splice(i,1);
+      return;
+    }
+  }
+}
+function posDesdeEvento(ev){
+  const r=cv.getBoundingClientRect(); const sx=W/r.width, sy=H/r.height;
+  const cx = ev.touches? ev.touches[0].clientX : ev.clientX;
+  const cy = ev.touches? ev.touches[0].clientY : ev.clientY;
+  return [(cx-r.left)*sx, (cy-r.top)*sy];
+}
+cv.addEventListener('click', e=>{ const [x,y]=posDesdeEvento(e); clickAt(x,y); });
+cv.addEventListener('touchstart', e=>{ e.preventDefault(); const [x,y]=posDesdeEvento(e); clickAt(x,y); }, {passive:false});
+document.getElementById('restart').addEventListener('click', reset);
+</script>
+</body>
+</html>

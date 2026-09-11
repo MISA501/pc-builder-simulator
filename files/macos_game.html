@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>macOS Terminal Rescue Simulator</title>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #afb1b3;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #terminal {
+            width: 900px;
+            height: 550px;
+            background-color: #2b2b2b;
+            border: 1px solid #454545;
+            border-radius: 10px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .window-header {
+            background-color: #383838;
+            padding: 10px 15px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            border-bottom: 1px solid #454545;
+        }
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .dot-red { background-color: #ff5f56; }
+        .dot-yellow { background-color: #ffbd2e; }
+        .dot-green { background-color: #27c93f; }
+        .title {
+            margin-left: 250px;
+            font-size: 13px;
+            color: #999;
+        }
+        #output {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #f8f8f2;
+        }
+        .input-line {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background-color: #2b2b2b;
+            border-top: 1px solid #383838;
+        }
+        .prompt {
+            color: #5af78e;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #f8f8f2;
+            font-family: monospace;
+            font-size: 15px;
+            outline: none;
+        }
+        .error { color: #ff5c57; }
+        .success { color: #5af78e; }
+        .warning { color: #f3f99d; }
+    </style>
+</head>
+<body>
+
+    <div id="terminal">
+        <div class="window-header">
+            <div class="dot dot-red"></div>
+            <div class="dot dot-yellow"></div>
+            <div class="dot dot-green"></div>
+            <span class="title">misael@MacBook-Pro ~ zsh</span>
+        </div>
+        <div id="output">
+Last login: <span class="warning">Friday Sep 11 16:30:12</span> on ttys001
+MacBook-Pro:~ misael$ <span class="warning">¡ALERTA EN macOS! El sistema está al borde de un Kernel Panic. 
+Problemas críticos del sistema:
+1. El proceso "WindowServer" está congelado consumiendo demasiados recursos.
+2. Hay basura acumulada en la caché del sistema (~/Library/Caches).
+3. Permisos de disco corrompidos en el volumen principal (Macintosh HD).
+
+Escribe <span style="color:#5af78e;">'help'</span> para ver los comandos de depuración de macOS.</span>
+----------------------------------------------------------------------------------
+        </div>
+        <div class="input-line">
+            <span class="prompt">MacBook-Pro:~ misael$</span>
+            <input type="text" id="cmd-input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const input = document.getElementById('cmd-input');
+
+        let gameState = {
+            processKilled: false,
+            cachesCleared: false,
+            diskRepaired: false
+        };
+
+        const helpTexts = `Comandos disponibles en macOS:
+  help                     - Muestra esta lista de ayuda
+  top -l 1                 - Revisa el uso de CPU y procesos activos
+  killall WindowServer     - Reinicia el gestor gráfico colgado de macOS
+  rm -rf ~/Library/Caches/* - Limpia la caché pesada del usuario
+  diskutil verifyVolume /  - Revisa la integridad del disco principal
+  status                   - Revisa el estado de la misión
+  clear                    - Limpia la pantalla de la terminal`;
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = input.value.trim();
+                appendOutput(`MacBook-Pro:~ misael$ ${cmd}\n`, '#5af78e');
+                processCommand(cmd);
+                input.value = '';
+                output.scrollTop = output.scrollHeight;
+            }
+        });
+
+        function appendOutput(text, color = '#f8f8f2') {
+            const span = document.createElement('span');
+            span.style.color = color;
+            span.innerText = text + '\n';
+            output.appendChild(span);
+        }
+
+        function processCommand(cmd) {
+            switch(cmd) {
+                case 'help':
+                    appendOutput(helpTexts, '#f3f99d');
+                    break;
+                case 'top -l 1':
+                    appendOutput('Processes: 284 total, 3 running, 281 sleeping\nPID    COMMAND      %CPU   THRD\n421    WindowServer 98.5%  14  <-- ¡CONGELADO!\n102    kernel_task  4.2%   112\n88     Finder       0.0%   18', '#ff5c57');
+                    break;
+                case 'killall WindowServer':
+                    gameState.processKilled = true;
+                    appendOutput('Reiniciando WindowServer... Pantalla parpadeando... [OK] Interfaz restaurada.', '#5af78e');
+                    checkWinCondition();
+                    break;
+                case 'rm -rf ~/Library/Caches/*':
+                    gameState.cachesCleared = true;
+                    appendOutput('Caché del usuario eliminada correctamente. 12.4 GB de espacio recuperados.', '#5af78e');
+                    checkWinCondition();
+                    break;
+                case 'diskutil verifyVolume /':
+                    gameState.diskRepaired = true;
+                    appendOutput('Started filesystem inspection on Macintosh HD...\nVerifying file system...\nChecking Extents Overflow file...\nVolume check is successful. Permisos corregidos.', '#5af78e');
+                    checkWinCondition();
+                    break;
+                case 'status':
+                    appendOutput(`Estado de misiones de macOS:
+- WindowServer restablecido: ${gameState.processKilled ? '[✔]' : '[X]'}
+- Caché de usuario limpia: ${gameState.cachesCleared ? '[✔]' : '[X]'}
+- Volumen Macintosh HD verificado: ${gameState.diskRepaired ? '[✔]' : '[X]'}`, '#f3f99d');
+                    break;
+                case 'clear':
+                    output.innerHTML = '';
+                    break;
+                case '':
+                    break;
+                default:
+                    appendOutput(`zsh: command not found: ${cmd}. Escribe 'help' para ver la ayuda.`, '#ff5c57');
+            }
+        }
+
+        function checkWinCondition() {
+            if (gameState.processKilled && gameState.cachesCleared && gameState.diskRepaired) {
+                setTimeout(() => {
+                    appendOutput(`\n✨ ¡EXCELENTE TRABAJO! Has evitado el Kernel Panic en macOS.\nEl sistema operativo vuelve a estar fluido y optimizado. ¡Has ganado!`, '#5af78e');
+                }, 500);
+            }
+        }
+    </script>
+</body>
+</html>

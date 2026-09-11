@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Server Rescue Simulator</title>
+    <style>
+        body {
+            background-color: #0f111a;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #terminal {
+            width: 900px;
+            height: 550px;
+            background-color: #1a1b26;
+            border: 2px solid #3b4252;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }
+        #output {
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .input-line {
+            display: flex;
+            align-items: center;
+            border-top: 1px solid #3b4252;
+            padding-top: 10px;
+        }
+        .prompt {
+            color: #7aa2f7;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #c0caf5;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 15px;
+            outline: none;
+        }
+        .error { color: #f7768e; }
+        .success { color: #9ece6a; }
+        .warning { color: #e0af68; }
+    </style>
+</head>
+<body>
+
+    <div id="terminal">
+        <div id="output">
+Ubuntu 24.04.1 LTS (GNU/Linux 6.8.0-31-generic x86_64)
+* Documentation:  https://help.ubuntu.com
+* Management:     https://landscape.canonical.com
+* Support:        https://ubuntu.com/pro
+
+<span class="warning">¡ALERTA DE SISTEMA! El servidor web principal ha colapsado. 
+Problemas detectados:
+1. El servicio Nginx está caído.
+2. El disco principal está al 100% de su capacidad por archivos basura de logs.
+3. Hay un intruso con PID sospechoso consumiendo memoria.
+
+Escribe <span style="color:#7aa2f7;">'help'</span> para ver la lista de comandos disponibles y salvar el servidor.</span>
+----------------------------------------------------------------------------------
+        </div>
+        <div class="input-line">
+            <span class="prompt">sysadmin@ubuntu-server:~$</span>
+            <input type="text" id="cmd-input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const input = document.getElementById('cmd-input');
+
+        let gameState = {
+            diskCleaned: false,
+            nginxStarted: false,
+            processKilled: false
+        };
+
+        const commandsInfo = `Comandos disponibles:
+  help                - Muestra esta lista de ayuda
+  ls                  - Lista los archivos del directorio actual
+  df -h               - Revisa el espacio en disco
+  du -sh /var/log     - Revisa el peso de la carpeta de logs
+  rm -rf /var/log/*   - Limpia los archivos de logs basura
+  ps aux              - Muestra los procesos en ejecución
+  kill -9 1337        - Termina el proceso malicioso con PID 1337
+  systemctl start nginx - Inicia el servidor web
+  status              - Verifica el estado actual de la misión
+  clear               - Limpia la pantalla de la terminal`;
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = input.value.trim();
+                appendOutput(`sysadmin@ubuntu-server:~$ ${cmd}\n`, '#7aa2f7');
+                processCommand(cmd);
+                input.value = '';
+                output.scrollTop = output.scrollHeight;
+            }
+        });
+
+        function appendOutput(text, color = '#c0caf5') {
+            const span = document.createElement('span');
+            span.style.color = color;
+            span.innerText = text + '\n';
+            output.appendChild(span);
+        }
+
+        function processCommand(cmd) {
+            switch(cmd) {
+                case 'help':
+                    appendOutput(commandsInfo, '#bb9af7');
+                    break;
+                case 'ls':
+                    appendOutput('documentos/  scripts/  var/  tmp/  secret.txt', '#89ddff');
+                    break;
+                case 'df -h':
+                    if (!gameState.diskCleaned) {
+                        appendOutput('Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   50G    0G 100% /  <-- ¡LLENO!', '#f7768e');
+                    } else {
+                        appendOutput('Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   15G   35G  30% /  <-- ¡Saludable!', '#9ece6a');
+                    }
+                    break;
+                case 'du -sh /var/log':
+                    appendOutput(gameState.diskCleaned ? '4.2K    /var/log' : '35G    /var/log (¡Demasiado pesado!)', '#e0af68');
+                    break;
+                case 'rm -rf /var/log/*':
+                    gameState.diskCleaned = true;
+                    appendOutput('Archivos de logs eliminados con éxito. Espacio liberado.', '#9ece6a');
+                    checkWinCondition();
+                    break;
+                case 'ps aux':
+                    appendOutput('USER     PID %CPU %MEM COMMAND\nroot       1  0.0  0.4 /sbin/init\nnginx    854  0.0  1.2 nginx: worker process (Caído)\nroot    1337  99.9 15.4 python3 malware_miner.py (¡INTRUSO!)', '#ff9e64');
+                    break;
+                case 'kill -9 1337':
+                    gameState.processKilled = true;
+                    appendOutput('Proceso [1337] terminado correctamente.', '#9ece6a');
+                    checkWinCondition();
+                    break;
+                case 'systemctl start nginx':
+                    gameState.nginxStarted = true;
+                    appendOutput('Servicio Nginx iniciado correctamente [OK].', '#9ece6a');
+                    checkWinCondition();
+                    break;
+                case 'status':
+                    appendOutput(`Estado de misiones:
+- Espacio en disco liberado: ${gameState.diskCleaned ? '[✔]' : '[X]'}
+- Proceso malicioso eliminado: ${gameState.processKilled ? '[✔]' : '[X]'}
+- Nginx activo: ${gameState.nginxStarted ? '[✔]' : '[X]'}`, '#bb9af7');
+                    break;
+                case 'clear':
+                    output.innerHTML = '';
+                    break;
+                case '':
+                    break;
+                default:
+                    appendOutput(`bash: ${cmd}: comando no encontrado. Escribe 'help' para ver los comandos.`, '#f7768e');
+            }
+        }
+
+        function checkWinCondition() {
+            if (gameState.diskCleaned && gameState.nginxStarted && gameState.processKilled) {
+                setTimeout(() => {
+                    appendOutput(`\n🎉 ¡FELICIDADES SYSADMIN! Has resuelto todos los problemas del servidor.\nEl sistema se encuentra 100% operativo y seguro.`, '#00ff66');
+                }, 500);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PC Builder Pro 2D — versión JavaScript</title>
+<style>
+  html,body{ margin:0; padding:0; background:#0b0c10; color:#eee; font-family:Consolas,'Courier New',monospace; }
+  .wrap{ max-width:1280px; margin:0 auto; padding:14px; }
+  canvas{ width:100%; height:auto; display:block; background:#121216; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.6); cursor:default; }
+  .hint{ text-align:center; color:#8a93a3; font-size:12.5px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="lienzo" width="1280" height="720"></canvas>
+  <div class="hint">Arrastra piezas y cables con el mouse · [H] BIOS/SO · [R] Reiniciar partida</div>
+</div>
+
+<script>
+/* ================================================================
+   PC BUILDER PRO 2D — port a JavaScript / Canvas de main.py
+   Un solo archivo, vanilla JS, sin librerías externas.
+   ================================================================ */
+
+const ANCHO = 1280, ALTO = 720;
+const cv = document.getElementById('lienzo');
+const ctx = cv.getContext('2d');
+
+/* -------------------- PALETA (igual que main.py) -------------------- */
+const NEGRO=[10,10,12], GRIS_OSCURO=[35,37,42], GRIS=[70,74,82], GRIS_CLARO=[140,145,155],
+      BLANCO=[235,238,240], VERDE=[60,210,110], ROJO=[220,60,60], AMARILLO=[240,200,60],
+      AZUL=[70,140,230], NARANJA=[230,140,40], VIOLETA=[150,90,220], COBRE=[190,120,70],
+      VERDE_PCB=[30,90,55], DORADO=[200,170,60];
+
+const OS_INFO = {
+  windows: { nombre:'Windows', tagline:'El mas usado en casa y oficina', color:[90,190,240],
+    desc:['Hecho por Microsoft.','Compatible con casi cualquier programa','y con la mayoria de los videojuegos.'] },
+  linux: { nombre:'Linux', tagline:'Gratis y personalizable', color:[240,200,60],
+    desc:['Gratuito y de codigo abierto: cualquiera','puede ver y modificar como funciona.','El favorito para servidores de internet.'] },
+  mac: { nombre:'macOS', tagline:'Solo en computadoras Apple', color:[190,130,230],
+    desc:['Solo corre en computadoras Mac.','Conocido por su diseno cuidado.','Preferido por disenadores y editores de video.'] }
+};
+
+const F_CHICA="14px Consolas", F_NORMAL="18px Consolas", F_GRANDE="bold 28px Consolas",
+      F_TITULO="bold 46px Consolas", F_MONO="bold 16px 'Courier New'";
+
+/* -------------------- AUDIO PROCEDURAL (Web Audio) -------------------- */
+let audioCtx = null;
+function getCtx(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+function playTone(freq,dur,vol=0.2,tipo='square'){
+  const c=getCtx(); const o=c.createOscillator(); const g=c.createGain();
+  o.type=tipo; o.frequency.value=freq; g.gain.value=vol;
+  o.connect(g); g.connect(c.destination);
+  const t0=c.currentTime;
+  g.gain.setValueAtTime(vol,t0); g.gain.linearRampToValueAtTime(0.0001,t0+dur);
+  o.start(t0); o.stop(t0+dur+0.02);
+}
+function playNoise(dur,vol=0.3){
+  const c=getCtx(); const n=Math.floor(c.sampleRate*dur);
+  const buf=c.createBuffer(1,n,c.sampleRate); const data=buf.getChannelData(0);
+  for(let i=0;i<n;i++){ const env=1-i/n; data[i]=(Math.random()*2-1)*vol*env; }
+  const src=c.createBufferSource(); src.buffer=buf; src.connect(c.destination); src.start();
+}
+const SND_CLICK=()=>playTone(880,0.05,0.2,'square');
+const SND_ERROR=()=>playTone(140,0.25,0.3,'square');
+const SND_SNAP=()=>playTone(1200,0.06,0.25,'square');
+const SND_POST=()=>playTone(1000,0.35,0.3,'sine');
+const SND_EXPLOSION=()=>playNoise(0.6,0.4);
+const SND_POWERON=()=>playTone(200,0.4,0.15,'sine');
+function sonar(fn){ try{ fn(); }catch(e){} }
+
+/* -------------------- UTILIDADES DE DIBUJO -------------------- */
+function rgb(c,alpha){ return alpha===undefined ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${alpha})`; }
+function sumar(c,n){ return c.map(v=>Math.max(0,Math.min(255,v+n))); }
+
+function roundRectPath(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function dibujarTexto(texto,fuente,color,x,y,centrado=false){
+  ctx.font=fuente; ctx.fillStyle=rgb(color);
+  ctx.textAlign = centrado ? 'center' : 'left';
+  ctx.textBaseline = centrado ? 'middle' : 'top';
+  ctx.fillText(texto,x,y);
+}
+
+function rectConSombra(x,y,w,h,color,radio=6){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(x+w/2, y+h-3, w/2+10, 10, 0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle=rgb(color);
+  roundRectPath(x,y,w,h,radio); ctx.fill();
+}
+
+/* ================================================================
+   PARTÍCULAS (polvo al instalar / humo al explotar)
+   ================================================================ */
+class Particula{
+  constructor(x,y,color,vida=0.8,tipo='polvo'){
+    this.x=x; this.y=y; this.tipo=tipo; this.color=color;
+    const ang=Math.random()*Math.PI*2;
+    const vel = tipo==='polvo' ? (20+Math.random()*70) : (10+Math.random()*30);
+    this.vx=Math.cos(ang)*vel;
+    this.vy=Math.sin(ang)*vel - (tipo==='polvo'?10:30);
+    this.vidaTotal=vida; this.vida=vida;
+    this.radio = tipo==='polvo' ? (2+Math.random()*3) : (6+Math.random()*8);
+  }
+  actualizar(dt){
+    this.vida-=dt; this.x+=this.vx*dt; this.y+=this.vy*dt;
+    if(this.tipo==='polvo'){ this.vy += 120*dt; } else { this.vy -= 15*dt; this.radio += 12*dt; }
+    return this.vida>0;
+  }
+  dibujar(){
+    const alpha = Math.max(0, this.vida/this.vidaTotal);
+    ctx.fillStyle = rgb(this.color, alpha);
+    ctx.beginPath(); ctx.arc(this.x,this.y,Math.max(0.1,this.radio),0,Math.PI*2); ctx.fill();
+  }
+}
+
+/* ================================================================
+   COMPONENTE ARRASTRABLE
+   ================================================================ */
+class Componente{
+  constructor(id,nombre,tipo,watts,tam,posEstante){
+    this.id=id; this.nombre=nombre; this.tipo=tipo; this.watts=watts;
+    this.x=posEstante[0]; this.y=posEstante[1]; this.w=tam[0]; this.h=tam[1];
+    this.posEstante=posEstante.slice();
+    this.colocado=false; this.arrastrando=false; this.offset=[0,0];
+    this.rebotando=false; this.reboteT=0;
+    this.reboteOrigen=posEstante.slice(); this.reboteDestino=posEstante.slice();
+  }
+  contiene(pos){ return pos[0]>=this.x && pos[0]<=this.x+this.w && pos[1]>=this.y && pos[1]<=this.y+this.h; }
+  centro(){ return [this.x+this.w/2, this.y+this.h/2]; }
+  iniciarArrastre(pos){ if(this.colocado) return; this.arrastrando=true; this.offset=[pos[0]-this.x, pos[1]-this.y]; }
+  mover(pos){ if(this.arrastrando){ this.x=pos[0]-this.offset[0]; this.y=pos[1]-this.offset[1]; } }
+  soltarEnEstante(){ this.rebotando=true; this.reboteT=0; this.reboteOrigen=[this.x,this.y]; this.reboteDestino=this.posEstante.slice(); }
+  actualizar(dt){
+    if(this.rebotando){
+      this.reboteT += dt*3.2;
+      if(this.reboteT>=1){ [this.x,this.y]=this.reboteDestino; this.rebotando=false; }
+      else{
+        const t=this.reboteT, ease=1-Math.pow(1-t,3), sacudida=Math.sin(t*Math.PI*4)*(1-t)*6;
+        this.x = this.reboteOrigen[0] + (this.reboteDestino[0]-this.reboteOrigen[0])*ease;
+        this.y = this.reboteOrigen[1] + (this.reboteDestino[1]-this.reboteOrigen[1])*ease + sacudida;
+      }
+    }
+  }
+  dibujar(tiempo){
+    const {x,y,w,h}=this;
+    switch(this.tipo){
+      case 'cpu':
+        rectConSombra(x,y,w,h,[60,60,65]);
+        ctx.strokeStyle=rgb(DORADO); ctx.lineWidth=3; roundRectPath(x,y,w,h,6); ctx.stroke();
+        ctx.fillStyle=rgb(DORADO);
+        for(let i=0;i<6;i++){ const px=x+8+i*((w-16)/5), py=y+h-6; ctx.beginPath(); ctx.arc(px,py,2,0,Math.PI*2); ctx.fill(); }
+        dibujarTexto('i7-14700K',F_CHICA,BLANCO,x+w/2,y+h/2,true);
+        break;
+      case 'ram':
+        rectConSombra(x,y,w,h,[20,90,70]);
+        ctx.strokeStyle=rgb([10,60,45]); ctx.lineWidth=2; roundRectPath(x,y,w,h,3); ctx.stroke();
+        ctx.fillStyle=rgb(DORADO);
+        for(let i=0;i<5;i++){ const yy=y+8+i*(h-16)/4; ctx.fillRect(x+2,yy,w-4,4); }
+        break;
+      case 'gpu':
+        rectConSombra(x,y,w,h,[25,25,30]);
+        ctx.strokeStyle=rgb(GRIS); ctx.lineWidth=2; roundRectPath(x,y,w,h,8); ctx.stroke();
+        [0.28,0.72].forEach(fx=>{
+          const cx=x+w*fx, cy=y+h*0.55;
+          ctx.fillStyle='rgb(15,15,18)'; ctx.beginPath(); ctx.arc(cx,cy,18,0,Math.PI*2); ctx.fill();
+          const ang0=tiempo*(this.colocado?250:40);
+          ctx.strokeStyle=rgb(GRIS_CLARO); ctx.lineWidth=4;
+          for(let k=0;k<3;k++){ const a=(ang0+k*120)*Math.PI/180; const ex=cx+Math.cos(a)*14, ey=cy+Math.sin(a)*14;
+            ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke(); }
+        });
+        dibujarTexto('RTX 4070',F_CHICA,BLANCO,x+w/2,y+12,true);
+        ctx.fillStyle='#000'; ctx.fillRect(x+18,y-6,22,10); ctx.fillRect(x+58,y-6,22,10);
+        break;
+      case 'ssd':
+        rectConSombra(x,y,w,h,[20,20,25]);
+        ctx.fillStyle='rgb(40,150,90)'; roundRectPath(x,y,w,h,2); ctx.fill();
+        dibujarTexto('NVMe',F_CHICA,BLANCO,x+w/2,y+h/2,true);
+        break;
+      case 'psu': {
+        rectConSombra(x,y,w,h,[30,30,34]);
+        ctx.strokeStyle=rgb(GRIS); ctx.lineWidth=2; roundRectPath(x,y,w,h,6); ctx.stroke();
+        const cx=x+w/2, cy=y+h/2-10;
+        ctx.fillStyle='rgb(15,15,18)'; ctx.beginPath(); ctx.arc(cx,cy,30,0,Math.PI*2); ctx.fill();
+        const ang0=tiempo*(this.colocado?180:20);
+        ctx.strokeStyle=rgb(GRIS_CLARO); ctx.lineWidth=5;
+        for(let k=0;k<4;k++){ const a=(ang0+k*90)*Math.PI/180; const ex=cx+Math.cos(a)*22, ey=cy+Math.sin(a)*22;
+          ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke(); }
+        dibujarTexto('750W MODULAR',F_CHICA,BLANCO,x+w/2,y+h-14,true);
+        break;
+      }
+      case 'cooler': {
+        rectConSombra(x,y,w,h,[50,52,58]);
+        const cx=x+w/2, cy=y+h/2;
+        ctx.fillStyle='rgb(18,18,22)'; ctx.beginPath(); ctx.arc(cx,cy,w/2-4,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=rgb(GRIS_CLARO); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,w/2-4,0,Math.PI*2); ctx.stroke();
+        const ang0=tiempo*(this.colocado?300:30);
+        ctx.lineWidth=5;
+        for(let k=0;k<5;k++){ const a=(ang0+k*72)*Math.PI/180; const ex=cx+Math.cos(a)*(w/2-10), ey=cy+Math.sin(a)*(w/2-10);
+          ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke(); }
+        break;
+      }
+    }
+    if(!this.colocado && !this.arrastrando){
+      dibujarTexto(this.nombre,F_CHICA,GRIS_CLARO,x+w/2,y+h+10,true);
+    }
+  }
+}
+
+/* ================================================================
+   CABLE FÍSICO (curva bezier deformable)
+   ================================================================ */
+class Cable{
+  constructor(id,nombre,fuenteId,offsetFuente,destinoPos,requiere,color){
+    this.id=id; this.nombre=nombre; this.fuenteId=fuenteId; this.offsetFuente=offsetFuente;
+    this.destinoPos=destinoPos; this.requiere=requiere; this.color=color;
+    this.conectado=false; this.arrastrando=false; this.puntaLibre=null;
+    this.inicializado=false; this.bonusEsteticoDado=false;
+  }
+  puntoFuente(componentes,panelPos){
+    if(this.fuenteId==='panel') return [panelPos[0]+this.offsetFuente[0], panelPos[1]+this.offsetFuente[1]];
+    const comp=componentes[this.fuenteId];
+    if(comp && comp.colocado) return [comp.x+this.offsetFuente[0], comp.y+this.offsetFuente[1]];
+    return null;
+  }
+  destinoDisponible(componentes){
+    if(this.requiere===null) return true;
+    const c=componentes[this.requiere];
+    return !!(c && c.colocado);
+  }
+  actualizar(componentes,panelPos){
+    const origen=this.puntoFuente(componentes,panelPos);
+    if(origen===null) return;
+    if(!this.inicializado && !this.conectado){ this.puntaLibre=[origen[0]+34, origen[1]+18]; this.inicializado=true; }
+    if(this.conectado) this.puntaLibre=this.destinoPos;
+  }
+  cercaDePunta(pos,radio=15){
+    if(this.puntaLibre===null || this.conectado) return false;
+    const dx=pos[0]-this.puntaLibre[0], dy=pos[1]-this.puntaLibre[1];
+    return Math.sqrt(dx*dx+dy*dy)<=radio;
+  }
+  intentarConectar(componentes,radio=26){
+    if(!this.destinoDisponible(componentes)) return [false,false];
+    const dx=this.puntaLibre[0]-this.destinoPos[0], dy=this.puntaLibre[1]-this.destinoPos[1];
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<=radio){ this.conectado=true; this.puntaLibre=this.destinoPos.slice();
+      return [true, this.chequearBonusEstetico(componentes)]; }
+    return [false,false];
+  }
+  chequearBonusEstetico(componentes){
+    if(this.bonusEsteticoDado) return false;
+    const origen=this.puntoFuente(componentes,[0,0]) || this.destinoPos;
+    const medioY=(origen[1]+this.destinoPos[1])/2 + 40;
+    const canal={x:190,y:538,w:860,h:28};
+    const dentro = this.destinoPos[0]>=canal.x && this.destinoPos[0]<=canal.x+canal.w && medioY>=canal.y && medioY<=canal.y+canal.h;
+    if(dentro || medioY>538){ this.bonusEsteticoDado=true; return true; }
+    return false;
+  }
+  dibujar(componentes,panelPos){
+    const origen=this.puntoFuente(componentes,panelPos);
+    if(origen===null) return;
+    const destino = this.puntaLibre || origen;
+    const midX=(origen[0]+destino[0])/2, midY=(origen[1]+destino[1])/2;
+    const dist=Math.hypot(destino[0]-origen[0], destino[1]-origen[1]);
+    const combado = this.conectado ? 0 : Math.min(70, dist*0.28);
+    const ctrl=[midX, midY+combado];
+    const activo=this.destinoDisponible(componentes);
+    const color = activo ? this.color : [60,60,60];
+
+    ctx.strokeStyle=rgb(color); ctx.lineWidth=6; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(origen[0],origen[1]); ctx.quadraticCurveTo(ctrl[0],ctrl[1],destino[0],destino[1]); ctx.stroke();
+    ctx.strokeStyle=rgb(sumar(color,40)); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(origen[0],origen[1]); ctx.quadraticCurveTo(ctrl[0],ctrl[1],destino[0],destino[1]); ctx.stroke();
+
+    const colConector = this.conectado ? VERDE : (activo ? AMARILLO : GRIS);
+    ctx.strokeStyle=rgb(colConector); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(this.destinoPos[0],this.destinoPos[1],7,0,Math.PI*2); ctx.stroke();
+
+    if(!this.conectado){
+      ctx.fillStyle=rgb(BLANCO);
+      ctx.beginPath(); ctx.arc(destino[0],destino[1],7,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=rgb(color); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(destino[0],destino[1],7,0,Math.PI*2); ctx.stroke();
+    }
+  }
+}
+
+/* ================================================================
+   JUEGO PRINCIPAL
+   ================================================================ */
+class Game{
+  constructor(){
+    this.estado='JUGANDO';
+    this.tiempo=0; this.particulas=[]; this.mensajeError='';
+    this.puntajeEstetico=0; this.mensajeFlash=''; this.mensajeFlashT=0;
+    this.shake=0; this.timerEstado=0; this.fpsBenchmarkMostrado=0;
+    this.sistemaOperativo=null; this.botonesSO={}; this.mostrarGlosario=false;
+    this.reiniciarPartida();
+  }
+
+  reiniciarPartida(){
+    this.tiempo=0; this.particulas=[]; this.puntajeEstetico=0; this.mensajeError='';
+    this.timerEstado=0; this.leverAbierto=true; this.sistemaOperativo=null; this.botonesSO={};
+
+    this.caseRect={x:190,y:100,w:860,h:470};
+    this.mbRect={x:240,y:130,w:560,h:380};
+    this.panelPos=[207,500];
+    this.powerBtn={x:190,y:420,w:34,h:34};
+
+    this.slots = {
+      cpu_socket:{x:400,y:170,w:70,h:70},
+      cooler_mount:{x:385,y:155,w:100,h:100},
+      ram_slot1:{x:500,y:150,w:18,h:110},
+      ram_slot2:{x:525,y:150,w:18,h:110},
+      m2_slot:{x:260,y:400,w:80,h:16},
+      pcie_slot:{x:260,y:440,w:320,h:60},
+      psu_bay:{x:820,y:390,w:170,h:140},
+    };
+    this.slotAcepta = {
+      cpu_socket:'cpu', cooler_mount:'cooler', ram_slot1:'ram', ram_slot2:'ram',
+      m2_slot:'ssd', pcie_slot:'gpu', psu_bay:'psu',
+    };
+
+    const defs = [
+      ['cpu','CPU i7-14700K','cpu',125,[70,70],[60,600]],
+      ['ram1','RAM DDR5 #1','ram',10,[18,110],[170,590]],
+      ['ram2','RAM DDR5 #2','ram',10,[18,110],[200,590]],
+      ['gpu','RTX 4070','gpu',200,[320,60],[260,630]],
+      ['ssd','SSD NVMe','ssd',5,[80,16],[620,650]],
+      ['psu','Fuente 750W','psu',0,[170,140],[760,578]],
+      ['cooler','Cooler CPU','cooler',5,[100,100],[980,600]],
+    ];
+    this.componentes = {};
+    defs.forEach(([id,nombre,tipo,watts,tam,pos]) => { this.componentes[id]=new Componente(id,nombre,tipo,watts,tam,pos); });
+
+    const cdefs = [
+      ['atx24','24-pin ATX','psu',[10,20],[790,190],null,[30,30,200]],
+      ['eps8','8-pin CPU (EPS)','psu',[10,45],[405,140],null,[200,30,30]],
+      ['pcie1','PCIe 8-pin #1','psu',[10,70],[290,440],'gpu',[40,40,45]],
+      ['pcie2','PCIe 8-pin #2','psu',[10,95],[330,440],'gpu',[40,40,45]],
+      ['sata','SATA / Power SSD','psu',[10,118],[300,400],'ssd',[200,170,30]],
+      ['pwr_sw','Power SW (panel)','panel',[0,0],[270,470],null,[100,100,105]],
+      ['reset','Reset SW (panel)','panel',[0,20],[300,470],null,[100,100,105]],
+      ['hdd_led','HDD LED (panel)','panel',[0,40],[330,470],null,[170,60,60]],
+    ];
+    this.cables = {};
+    cdefs.forEach(([id,nombre,fte,off,dest,req,color]) => { this.cables[id]=new Cable(id,nombre,fte,off,dest,req,color); });
+
+    this.cableArrastrado=null; this.componenteArrastrado=null;
+
+    this.cablesObligatorios = ['atx24','eps8','pcie1','pcie2','sata','pwr_sw'];
+    this.componentesObligatorios = ['cpu','ram1','ram2','gpu','ssd','psu','cooler'];
+
+    this.wattsTotales = Object.values(this.componentes).reduce((s,c)=>s+c.watts,0) + 50;
+    this.psuCapacidad = 750;
+
+    this.estado='JUGANDO';
+  }
+
+  progreso(){
+    const total = this.componentesObligatorios.length + this.cablesObligatorios.length;
+    let hechos = this.componentesObligatorios.filter(k=>this.componentes[k].colocado).length;
+    hechos += this.cablesObligatorios.filter(k=>this.cables[k].conectado).length;
+    return hechos/total;
+  }
+  faseActual(){
+    const piezasOk = this.componentesObligatorios.every(k=>this.componentes[k].colocado);
+    if(!piezasOk) return 'FASE 1: MONTAJE - arrastra las piezas a sus slots';
+    const cablesOk = this.cablesObligatorios.every(k=>this.cables[k].conectado);
+    if(!cablesOk) return 'FASE 2: CABLEADO - conecta todos los cables';
+    return 'FASE 3: ENCENDIDO - presiona el boton POWER del gabinete';
+  }
+  emitirParticulasPolvo(pos,color=[150,130,100]){
+    for(let i=0;i<14;i++) this.particulas.push(new Particula(pos[0],pos[1],color,0.7,'polvo'));
+  }
+  emitirHumo(pos){
+    for(let i=0;i<30;i++) this.particulas.push(new Particula(pos[0]+(Math.random()*40-20), pos[1]+(Math.random()*20-10), [60,60,65],1.6,'humo'));
+  }
+  flash(texto){ this.mensajeFlash=texto; this.mensajeFlashT=1.6; }
+
+  /* -------------------- EVENTOS -------------------- */
+  onMouseDown(pos){
+    if(this.estado==='FALLO' || this.estado==='EXPLOSION'){ this.estado='JUGANDO'; return; }
+    if(this.estado==='SELECCION_SO'){
+      for(const clave in this.botonesSO){
+        const r=this.botonesSO[clave];
+        if(pos[0]>=r.x && pos[0]<=r.x+r.w && pos[1]>=r.y && pos[1]<=r.y+r.h){ this.elegirSistemaOperativo(clave); return; }
+      }
+      return;
+    }
+    if(this.estado!=='JUGANDO') return;
+
+    if(pos[0]>=this.powerBtn.x && pos[0]<=this.powerBtn.x+this.powerBtn.w && pos[1]>=this.powerBtn.y && pos[1]<=this.powerBtn.y+this.powerBtn.h){
+      this.intentarEncender(); return;
+    }
+    const cablesArr = Object.values(this.cables).reverse();
+    for(const cable of cablesArr){
+      if(cable.cercaDePunta(pos)){ this.cableArrastrado=cable; cable.arrastrando=true; sonar(SND_CLICK); return; }
+    }
+    const compsArr = Object.values(this.componentes).reverse();
+    for(const comp of compsArr){
+      if(!comp.colocado && comp.contiene(pos)){ comp.iniciarArrastre(pos); this.componenteArrastrado=comp; sonar(SND_CLICK); return; }
+    }
+  }
+  onMouseMove(pos){
+    if(this.componenteArrastrado && this.componenteArrastrado.arrastrando) this.componenteArrastrado.mover(pos);
+    if(this.cableArrastrado && this.cableArrastrado.arrastrando) this.cableArrastrado.puntaLibre = pos;
+  }
+  onMouseUp(){
+    if(this.componenteArrastrado){ this.soltarComponente(this.componenteArrastrado); this.componenteArrastrado.arrastrando=false; this.componenteArrastrado=null; }
+    if(this.cableArrastrado){ this.soltarCable(this.cableArrastrado); this.cableArrastrado.arrastrando=false; this.cableArrastrado=null; }
+  }
+  onKeyDown(key){
+    if(key==='r' || key==='R') this.reiniciarPartida();
+    if(key==='h' || key==='H') this.mostrarGlosario = !this.mostrarGlosario;
+  }
+
+  soltarComponente(comp){
+    for(const slotId in this.slots){
+      if(this.slotAcepta[slotId] !== comp.tipo) continue;
+      if(slotId==='cooler_mount' && !this.componentes['cpu'].colocado) continue;
+      if(slotId==='cpu_socket' && !this.leverAbierto) continue;
+      const rect=this.slots[slotId];
+      const [cx,cy]=comp.centro();
+      const dentro = cx>=rect.x && cx<=rect.x+rect.w && cy>=rect.y && cy<=rect.y+rect.h;
+      const solapa = comp.x < rect.x+rect.w && comp.x+comp.w > rect.x && comp.y < rect.y+rect.h && comp.y+comp.h > rect.y;
+      if(dentro || solapa){
+        comp.x=rect.x; comp.y=rect.y; comp.colocado=true;
+        this.emitirParticulasPolvo([rect.x+rect.w/2, rect.y+rect.h/2]);
+        sonar(SND_SNAP);
+        if(slotId==='cpu_socket'){ this.leverAbierto=false; this.flash('CPU instalada. Palanca cerrada.'); }
+        else this.flash(`${comp.nombre} instalado correctamente`);
+        return;
+      }
+    }
+    comp.soltarEnEstante(); sonar(SND_ERROR); this.flash(`Slot incorrecto para ${comp.nombre}!`);
+  }
+  soltarCable(cable){
+    const [exito,bonus] = cable.intentarConectar(this.componentes);
+    if(exito){
+      sonar(SND_SNAP); this.emitirParticulasPolvo(cable.destinoPos,[90,160,220]);
+      if(bonus){ this.puntajeEstetico+=100; this.flash(`${cable.nombre} conectado (+100 estetica: cable oculto)`); }
+      else this.flash(`${cable.nombre} conectado correctamente`);
+    } else {
+      sonar(SND_ERROR); cable.puntaLibre=null; cable.inicializado=false;
+      this.flash(`${cable.nombre} no encaja ahi!`);
+    }
+  }
+
+  /* -------------------- ENCENDIDO -------------------- */
+  diagnosticar(){
+    const c=this.componentes, cab=this.cables;
+    if(!c.cpu.colocado) return 'CPU no instalada en el socket LGA1700';
+    if(!(c.ram1.colocado && c.ram2.colocado)) return 'Falta instalar modulo(s) de RAM DDR5';
+    if(!c.cooler.colocado) return 'Cooler no instalado - riesgo de sobrecalentamiento';
+    if(!c.psu.colocado) return 'Fuente de poder no instalada en su bahia';
+    if(!cab.atx24.conectado) return 'Cable 24-pin ATX no conectado a la motherboard';
+    if(!cab.eps8.conectado) return 'CPU power (8-pin EPS) no conectado';
+    if(!c.gpu.colocado) return 'GPU no instalada en el slot PCIe x16';
+    if(!(cab.pcie1.conectado && cab.pcie2.conectado)) return 'Alimentacion PCIe de la GPU incompleta';
+    if(!c.ssd.colocado) return 'SSD NVMe no instalado';
+    if(!cab.sata.conectado) return 'Cable de alimentacion del SSD no conectado';
+    if(!cab.pwr_sw.conectado) return 'Cable Power SW no conectado al panel frontal';
+    return null;
+  }
+  intentarEncender(){
+    const error=this.diagnosticar();
+    if(error){ this.mensajeError=error; this.estado='FALLO'; this.timerEstado=0; sonar(SND_ERROR); return; }
+    if(this.wattsTotales > this.psuCapacidad){
+      this.mensajeError='La fuente de poder es insuficiente para la carga total!';
+      this.estado='EXPLOSION'; this.timerEstado=0;
+      this.emitirHumo(this.componentes.psu.centro()); sonar(SND_EXPLOSION);
+      return;
+    }
+    this.estado='ENCENDIENDO'; this.timerEstado=0; sonar(SND_POWERON);
+  }
+  elegirSistemaOperativo(clave){
+    this.sistemaOperativo=clave; this.estado='ESCRITORIO'; this.timerEstado=0;
+    sonar(SND_SNAP); this.flash(`Iniciando ${OS_INFO[clave].nombre}...`);
+  }
+
+  /* -------------------- UPDATE -------------------- */
+  actualizar(dt){
+    this.tiempo+=dt;
+    if(this.mensajeFlashT>0) this.mensajeFlashT-=dt;
+    this.particulas = this.particulas.filter(p=>p.actualizar(dt));
+
+    if(this.estado==='JUGANDO'){
+      Object.values(this.componentes).forEach(c=>c.actualizar(dt));
+      Object.values(this.cables).forEach(c=>c.actualizar(this.componentes,this.panelPos));
+    } else if(this.estado==='ENCENDIENDO'){
+      this.timerEstado+=dt;
+      if(this.timerEstado>0.4 && this.timerEstado<0.42) sonar(SND_POST);
+      if(this.timerEstado>=2.2){ this.estado='BIOS'; this.timerEstado=0; }
+    } else if(this.estado==='BIOS'){
+      this.timerEstado+=dt;
+      if(this.timerEstado>=2.6){ this.estado='SELECCION_SO'; this.timerEstado=0; }
+    } else if(this.estado==='ESCRITORIO'){
+      this.timerEstado+=dt;
+      if(this.timerEstado>=1.8){ this.estado='BENCHMARK'; this.timerEstado=0; }
+    } else if(this.estado==='BENCHMARK'){
+      this.timerEstado+=dt;
+      this.fpsBenchmarkMostrado = Math.min(144, Math.floor(this.timerEstado*90));
+    } else if(this.estado==='EXPLOSION'){
+      this.timerEstado+=dt; this.shake=Math.max(0, 14-this.timerEstado*10);
+    }
+  }
+
+  /* -------------------- DIBUJO -------------------- */
+  dibujar(){
+    ctx.save();
+    let ox=0, oy=0;
+    if(this.shake>0){ ox=(Math.random()*2-1)*this.shake; oy=(Math.random()*2-1)*this.shake; ctx.translate(ox,oy); }
+
+    ctx.fillStyle='rgb(18,18,22)'; ctx.fillRect(-20,-20,ANCHO+40,ALTO+40);
+
+    this.dibujarGabinete(); this.dibujarMotherboard(); this.dibujarSlots();
+    Object.values(this.cables).forEach(c=>c.dibujar(this.componentes,this.panelPos));
+    Object.values(this.componentes).forEach(c=>c.dibujar(this.tiempo));
+    this.particulas.forEach(p=>p.dibujar());
+    this.dibujarPanelFrontal(); this.dibujarUI();
+
+    if(['ENCENDIENDO','BIOS','SELECCION_SO','ESCRITORIO','BENCHMARK'].includes(this.estado)) this.dibujarRGB();
+
+    if(this.estado==='BIOS') this.dibujarBios();
+    else if(this.estado==='SELECCION_SO') this.dibujarSeleccionSO();
+    else if(this.estado==='ESCRITORIO') this.dibujarEscritorio();
+    else if(this.estado==='BENCHMARK') this.dibujarBenchmark();
+    else if(this.estado==='FALLO') this.dibujarFallo();
+    else if(this.estado==='EXPLOSION') this.dibujarExplosion();
+
+    if(this.mostrarGlosario) this.dibujarGlosario();
+    ctx.restore();
+  }
+
+  dibujarGabinete(){
+    const r=this.caseRect;
+    ctx.fillStyle='rgb(25,26,30)'; roundRectPath(r.x,r.y,r.w,r.h,10); ctx.fill();
+    ctx.strokeStyle=rgb(GRIS); ctx.lineWidth=4; roundRectPath(r.x,r.y,r.w,r.h,10); ctx.stroke();
+    ctx.fillStyle='rgba(80,200,120,0.16)'; roundRectPath(190,538,860,28,6); ctx.fill();
+    dibujarTexto('Canal de gestion de cables (rutea aqui para +100 estetica)',F_CHICA,[110,220,150],198,546);
+  }
+  dibujarMotherboard(){
+    const r=this.mbRect;
+    ctx.fillStyle=rgb(VERDE_PCB); roundRectPath(r.x,r.y,r.w,r.h,6); ctx.fill();
+    ctx.strokeStyle='rgb(10,50,30)'; ctx.lineWidth=3; roundRectPath(r.x,r.y,r.w,r.h,6); ctx.stroke();
+    dibujarTexto('MOTHERBOARD (atornillada)',F_CHICA,[150,220,180], r.x+10, r.y+8);
+    ctx.fillStyle=rgb(GRIS_CLARO);
+    [[r.x+12,r.y+12],[r.x+r.w-12,r.y+12],[r.x+12,r.y+r.h-12],[r.x+r.w-12,r.y+r.h-12]].forEach(([tx,ty])=>{
+      ctx.beginPath(); ctx.arc(tx,ty,4,0,Math.PI*2); ctx.fill();
+    });
+  }
+  dibujarSlots(){
+    const etiquetas={cpu_socket:'LGA1700',ram_slot1:'RAM1',ram_slot2:'RAM2',m2_slot:'M.2',pcie_slot:'PCIe x16',psu_bay:'PSU BAY',cooler_mount:''};
+    for(const slotId in this.slots){
+      const rect=this.slots[slotId]; const tipo=this.slotAcepta[slotId];
+      const ocupado = Object.values(this.componentes).some(c=>c.colocado && c.tipo===tipo && c.x===rect.x && c.y===rect.y);
+      if(ocupado) continue;
+      let color=[90,95,105];
+      if(slotId==='cpu_socket') color = this.leverAbierto ? [200,170,60] : [90,60,60];
+      ctx.fillStyle='rgb(12,14,16)'; roundRectPath(rect.x,rect.y,rect.w,rect.h,3); ctx.fill();
+      ctx.strokeStyle=rgb(color); ctx.lineWidth=2; roundRectPath(rect.x,rect.y,rect.w,rect.h,3); ctx.stroke();
+      if(etiquetas[slotId]) dibujarTexto(etiquetas[slotId],F_CHICA,GRIS_CLARO, rect.x+rect.w/2, rect.y+rect.h+8, true);
+    }
+    const lever={x:400,y:158,w:70,h:8};
+    const col = this.leverAbierto ? VERDE : ROJO;
+    ctx.fillStyle=rgb(col); roundRectPath(lever.x,lever.y,lever.w,lever.h,3); ctx.fill();
+    dibujarTexto('PALANCA ' + (this.leverAbierto?'ABIERTA':'CERRADA'), F_CHICA, col, lever.x+lever.w/2, lever.y-10, true);
+  }
+  dibujarPanelFrontal(){
+    const r=this.caseRect;
+    ctx.fillStyle='rgb(45,46,50)'; ctx.fillRect(r.x,r.y,34,r.h);
+    ctx.strokeStyle=rgb(GRIS); ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,34,r.h);
+    const encendido = ['ENCENDIENDO','BIOS','BENCHMARK'].includes(this.estado);
+    const col = encendido ? VERDE : [200,60,60];
+    const cx=this.powerBtn.x+this.powerBtn.w/2, cy=this.powerBtn.y+this.powerBtn.h/2;
+    ctx.fillStyle='rgb(20,20,22)'; ctx.beginPath(); ctx.arc(cx,cy,20,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=rgb(col); ctx.beginPath(); ctx.arc(cx,cy,15,0,Math.PI*2); ctx.fill();
+    dibujarTexto('PWR',F_CHICA,BLANCO,cx,cy+32,true);
+    ctx.fillStyle='rgb(90,90,95)'; ctx.beginPath(); ctx.arc(this.panelPos[0],this.panelPos[1],8,0,Math.PI*2); ctx.fill();
+    dibujarTexto('PANEL',F_CHICA,GRIS_CLARO,this.panelPos[0],this.panelPos[1]+14);
+  }
+  dibujarRGB(){
+    const n=40, r=this.caseRect;
+    for(let i=0;i<n;i++){
+      const t=i/n; const hue=(t + this.tiempo*0.25) % 1.0;
+      const [rr,gg,bb]=hsvToRgb(hue,0.85,1.0);
+      const perim=2*(r.w+r.h); const d=t*perim;
+      const [x,y]=puntoEnPerimetro(r,d);
+      ctx.fillStyle=`rgb(${rr},${gg},${bb})`; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    }
+  }
+  dibujarUI(){
+    ctx.fillStyle='rgb(18,19,24)'; ctx.fillRect(0,0,ANCHO,90);
+    ctx.strokeStyle=rgb(GRIS); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,90); ctx.lineTo(ANCHO,90); ctx.stroke();
+    dibujarTexto('PC BUILDER PRO 2D',F_GRANDE,BLANCO,16,10);
+    dibujarTexto(this.faseActual(),F_NORMAL,AMARILLO,16,44);
+
+    const prog=this.progreso();
+    ctx.fillStyle=rgb(GRIS_OSCURO); roundRectPath(16,68,260,14,7); ctx.fill();
+    ctx.fillStyle=rgb(VERDE); roundRectPath(16,68,Math.max(1,260*prog),14,7); ctx.fill();
+    dibujarTexto(`Progreso ${Math.floor(prog*100)}%`,F_CHICA,BLANCO,16+260+10,67);
+
+    const compOk = this.mensajeFlashT<=0 || /correctamente|instalado|conectado/.test(this.mensajeFlash);
+    ctx.fillStyle = compOk ? rgb(VERDE) : rgb(ROJO);
+    ctx.beginPath(); ctx.arc(420,40,14,0,Math.PI*2); ctx.fill();
+    dibujarTexto(compOk?'OK':'X',F_CHICA,NEGRO,420,40,true);
+    dibujarTexto('Compatibilidad',F_CHICA,GRIS_CLARO,365,58);
+
+    const wx=520;
+    ctx.fillStyle=rgb(GRIS_OSCURO); roundRectPath(wx,30,220,16,8); ctx.fill();
+    const frac=Math.min(1,this.wattsTotales/this.psuCapacidad);
+    const colW = frac<0.85?VERDE:(frac<1?AMARILLO:ROJO);
+    ctx.fillStyle=rgb(colW); roundRectPath(wx,30,Math.max(1,220*frac),16,8); ctx.fill();
+    dibujarTexto(`${this.wattsTotales}W / ${this.psuCapacidad}W`,F_CHICA,BLANCO,wx,50);
+
+    dibujarTexto(`Estetica: ${this.puntajeEstetico} pts`,F_NORMAL,VIOLETA,800,20);
+
+    const pendientes = this.cablesObligatorios.filter(c=>!this.cables[c].conectado).map(c=>this.cables[c].nombre);
+    if(pendientes.length && this.estado==='JUGANDO'){
+      const txt='Cables pendientes: ' + pendientes.slice(0,3).join(', ') + (pendientes.length>3?'...':'');
+      dibujarTexto(txt,F_CHICA,GRIS_CLARO,800,48);
+    }
+    if(this.mensajeFlashT>0){
+      const alpha=Math.min(0.7, this.mensajeFlashT);
+      ctx.fillStyle=`rgba(0,0,0,${alpha})`; ctx.fillRect(0,ALTO-40,ANCHO,34);
+      dibujarTexto(this.mensajeFlash,F_NORMAL,BLANCO,ANCHO/2,ALTO-23,true);
+    }
+    dibujarTexto('[H] BIOS/SO   [R] Reiniciar',F_CHICA,GRIS,ANCHO-230,8);
+  }
+
+  dibujarBios(){
+    ctx.fillStyle='rgb(0,0,40)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    const lineas=[
+      'American MegaBuild BIOS (C) JS Corp.',
+      'CPU: Intel Core i7-14700K  ................ OK',
+      'Memoria: 2 x 16GB DDR5 detectada .......... OK',
+      'GPU: NVIDIA GeForce RTX 4070 .............. OK',
+      'Almacenamiento: NVMe SSD detectado ........ OK',
+      '',
+      'Presiona SUPR para entrar a Setup',
+      'Arrancando desde SSD NVMe...',
+      '',
+      'La BIOS es el primer programa que corre la PC:',
+      'revisa que cada pieza responda ANTES de dejar',
+      'entrar al Sistema Operativo (como un portero que',
+      'revisa todo antes de abrir la puerta).',
+    ];
+    let y=220;
+    lineas.forEach(l=>{ dibujarTexto(l,F_MONO,[180,220,255],300,y); y+=30; });
+  }
+  dibujarSeleccionSO(){
+    ctx.fillStyle='rgba(0,0,0,0.8)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    dibujarTexto('La BIOS encontro el disco de arranque (SSD).',F_GRANDE,BLANCO,ANCHO/2,130,true);
+    dibujarTexto('Elige que Sistema Operativo quieres iniciar:',F_NORMAL,GRIS_CLARO,ANCHO/2,168,true);
+    const anchoBtn=260, altoBtn=220, espacio=40;
+    const total=anchoBtn*3+espacio*2; const x0=ANCHO/2-total/2; const y0=220;
+    this.botonesSO={};
+    ['windows','linux','mac'].forEach((clave,i)=>{
+      const info=OS_INFO[clave];
+      const rect={x:x0+i*(anchoBtn+espacio), y:y0, w:anchoBtn, h:altoBtn};
+      this.botonesSO[clave]=rect;
+      ctx.fillStyle='rgb(25,28,34)'; roundRectPath(rect.x,rect.y,rect.w,rect.h,14); ctx.fill();
+      ctx.strokeStyle=rgb(info.color); ctx.lineWidth=3; roundRectPath(rect.x,rect.y,rect.w,rect.h,14); ctx.stroke();
+      dibujarTexto(info.nombre,F_GRANDE,info.color,rect.x+rect.w/2,rect.y+34,true);
+      dibujarTexto(info.tagline,F_CHICA,BLANCO,rect.x+rect.w/2,rect.y+64,true);
+      let y=rect.y+96;
+      info.desc.forEach(l=>{ dibujarTexto(l,F_CHICA,GRIS_CLARO,rect.x+rect.w/2,y,true); y+=20; });
+      dibujarTexto('[ Click para elegir ]',F_CHICA,info.color,rect.x+rect.w/2,rect.y+rect.h-18,true);
+    });
+    dibujarTexto('[H] Que es el Sistema Operativo? (ayuda)',F_CHICA,GRIS_CLARO,ANCHO/2,ALTO-30,true);
+  }
+  dibujarEscritorio(){
+    const clave=this.sistemaOperativo; const info=OS_INFO[clave] || OS_INFO.windows;
+    ctx.fillStyle='rgba(10,14,22,0.92)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    dibujarTexto(`Escritorio de ${info.nombre}`,F_TITULO,info.color,ANCHO/2,150,true);
+    dibujarTexto("El Sistema Operativo es el 'gerente' de la PC:",F_NORMAL,BLANCO,ANCHO/2,220,true);
+    dibujarTexto('organiza tus archivos y le habla a cada pieza por ti.',F_NORMAL,BLANCO,ANCHO/2,246,true);
+    if(clave==='windows'){
+      const b={x:ANCHO/2-260,y:420,w:520,h:46};
+      ctx.fillStyle='rgb(10,30,46)'; roundRectPath(b.x,b.y,b.w,b.h,8); ctx.fill();
+      ctx.fillStyle=rgb(info.color); ctx.fillRect(b.x+14,b.y+13,20,20);
+      dibujarTexto('Inicio',F_NORMAL,info.color,b.x+44,b.y+22);
+      dibujarTexto('12:34',F_NORMAL,GRIS_CLARO,b.x+b.w-66,b.y+22);
+    } else if(clave==='linux'){
+      const t={x:ANCHO/2-260,y:400,w:520,h:90};
+      ctx.fillStyle='rgb(8,8,8)'; roundRectPath(t.x,t.y,t.w,t.h,6); ctx.fill();
+      ctx.strokeStyle=rgb(info.color); ctx.lineWidth=2; roundRectPath(t.x,t.y,t.w,t.h,6); ctx.stroke();
+      dibujarTexto('user@buildmaster:~$ _',F_MONO,info.color,t.x+16,t.y+16+8);
+    } else {
+      const d={x:ANCHO/2-180,y:420,w:360,h:60};
+      ctx.fillStyle='rgba(255,255,255,0.15)'; roundRectPath(d.x,d.y,d.w,d.h,30); ctx.fill();
+      [[90,170,250],[250,190,80],[120,220,140],[230,120,190]].forEach((c,i)=>{
+        const cx=d.x+50+i*70;
+        ctx.fillStyle=rgb(c); roundRectPath(cx-18, d.y+d.h/2-18, 36,36,8); ctx.fill();
+      });
+    }
+  }
+  dibujarGlosario(){
+    ctx.fillStyle='rgba(0,0,0,0.88)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    const panel={x:140,y:50,w:ANCHO-280,h:ALTO-100};
+    ctx.fillStyle='rgb(16,20,26)'; roundRectPath(panel.x,panel.y,panel.w,panel.h,16); ctx.fill();
+    ctx.strokeStyle=rgb(VERDE); ctx.lineWidth=2; roundRectPath(panel.x,panel.y,panel.w,panel.h,16); ctx.stroke();
+    dibujarTexto('QUE ES LA BIOS Y EL SISTEMA OPERATIVO',F_GRANDE,VERDE,panel.x+panel.w/2,panel.y+30,true);
+    const lineas=[
+      ['BIOS:',VERDE],
+      ['Es el primer programa que corre la PC al encender, antes que',BLANCO],
+      ['Windows, Linux o macOS. Revisa que el CPU, la RAM y las demas',BLANCO],
+      ['piezas respondan bien. Es como el portero de un edificio: revisa',BLANCO],
+      ['que todo este en orden antes de dejar pasar al Sistema Operativo.',BLANCO],
+      ['',BLANCO],
+      ['SISTEMA OPERATIVO:',VERDE],
+      ['Cuando la BIOS confirma que el hardware esta bien, el Sistema',BLANCO],
+      ['Operativo toma el control: organiza tus archivos, deja que abras',BLANCO],
+      ['programas, y le habla a cada pieza de hardware por ti. Es el',BLANCO],
+      ["'gerente' de toda la casa.",BLANCO],
+      ['',BLANCO],
+      ['WINDOWS:',AZUL],
+      ['El mas usado en casa y oficina. Compatible con casi cualquier',BLANCO],
+      ['programa y videojuego. Lo hace Microsoft.',BLANCO],
+      ['',BLANCO],
+      ['LINUX:',AMARILLO],
+      ['Gratuito y de codigo abierto: cualquiera puede ver y modificar',BLANCO],
+      ['como funciona por dentro. Favorito para servidores de internet.',BLANCO],
+      ['',BLANCO],
+      ['MACOS:',VIOLETA],
+      ['Solo corre en computadoras Apple (Mac). Conocido por su diseno',BLANCO],
+      ['cuidado; preferido por disenadores y editores de video.',BLANCO],
+    ];
+    let y=panel.y+68;
+    lineas.forEach(([texto,color])=>{ if(texto) dibujarTexto(texto,F_CHICA,color,panel.x+30,y); y+=21; });
+    dibujarTexto('[H] Cerrar',F_CHICA,GRIS_CLARO,panel.x+panel.w/2,panel.y+panel.h-22,true);
+  }
+  dibujarBenchmark(){
+    ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    dibujarTexto('¡SISTEMA ENCENDIDO CON ÉXITO!',F_TITULO,VERDE,ANCHO/2,190,true);
+    if(this.sistemaOperativo){
+      const info=OS_INFO[this.sistemaOperativo];
+      dibujarTexto(`Sistema Operativo: ${info.nombre}`,F_NORMAL,info.color,ANCHO/2,232,true);
+    }
+    dibujarTexto(`FPS del benchmark: ${this.fpsBenchmarkMostrado}`,F_GRANDE,BLANCO,ANCHO/2,280,true);
+    const puntaje=this.fpsBenchmarkMostrado*100+this.puntajeEstetico;
+    dibujarTexto(`Puntaje total: ${puntaje} pts (incluye ${this.puntajeEstetico} de estetica)`,F_NORMAL,AMARILLO,ANCHO/2,330,true);
+    ctx.fillStyle=rgb(GRIS_OSCURO); roundRectPath(ANCHO/2-200,380,400,24,12); ctx.fill();
+    const frac=this.fpsBenchmarkMostrado/144;
+    ctx.fillStyle=rgb(VERDE); roundRectPath(ANCHO/2-200,380,Math.max(1,400*frac),24,12); ctx.fill();
+    dibujarTexto('¡GANASTE! Presiona [R] para armar otra PC',F_NORMAL,BLANCO,ANCHO/2,440,true);
+  }
+  dibujarFallo(){
+    ctx.fillStyle='rgba(0,0,0,0.92)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    dibujarTexto('LA PC NO ENCIENDE',F_TITULO,ROJO,ANCHO/2,260,true);
+    dibujarTexto(`Error: ${this.mensajeError}`,F_NORMAL,BLANCO,ANCHO/2,330,true);
+    dibujarTexto('Revisa el cableado y vuelve a intentarlo (click para reintentar)',F_CHICA,GRIS_CLARO,ANCHO/2,370,true);
+  }
+  dibujarExplosion(){
+    ctx.fillStyle='rgba(30,0,0,0.78)'; ctx.fillRect(0,0,ANCHO,ALTO);
+    dibujarTexto('¡LA FUENTE EXPLOTÓ!',F_TITULO,NARANJA,ANCHO/2,260,true);
+    dibujarTexto(this.mensajeError,F_NORMAL,BLANCO,ANCHO/2,320,true);
+    dibujarTexto('Click o [R] para reiniciar',F_CHICA,GRIS_CLARO,ANCHO/2,360,true);
+  }
+}
+
+/* -------------------- helpers de color / geometría -------------------- */
+function hsvToRgb(h,s,v){
+  let r,g,b; const i=Math.floor(h*6); const f=h*6-i;
+  const p=v*(1-s), q=v*(1-f*s), t=v*(1-(1-f)*s);
+  switch(i%6){
+    case 0: r=v;g=t;b=p; break; case 1: r=q;g=v;b=p; break; case 2: r=p;g=v;b=t; break;
+    case 3: r=p;g=q;b=v; break; case 4: r=t;g=p;b=v; break; case 5: r=v;g=p;b=q; break;
+  }
+  return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
+}
+function puntoEnPerimetro(rect,d){
+  const w=rect.w, h=rect.h;
+  if(d<w) return [rect.x+d, rect.y];
+  d-=w; if(d<h) return [rect.x+w, rect.y+d];
+  d-=h; if(d<w) return [rect.x+w-d, rect.y+h];
+  d-=w; return [rect.x, rect.y+h-d];
+}
+
+/* -------------------- BUCLE PRINCIPAL -------------------- */
+const juego = new Game();
+
+function posDesdeEvento(ev){
+  const r = cv.getBoundingClientRect();
+  const escalaX = ANCHO / r.width, escalaY = ALTO / r.height;
+  const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+  const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+  return [(clientX - r.left) * escalaX, (clientY - r.top) * escalaY];
+}
+cv.addEventListener('mousedown', e => juego.onMouseDown(posDesdeEvento(e)));
+cv.addEventListener('mousemove', e => juego.onMouseMove(posDesdeEvento(e)));
+window.addEventListener('mouseup', () => juego.onMouseUp());
+cv.addEventListener('touchstart', e => { e.preventDefault(); juego.onMouseDown(posDesdeEvento(e)); }, {passive:false});
+cv.addEventListener('touchmove', e => { e.preventDefault(); juego.onMouseMove(posDesdeEvento(e)); }, {passive:false});
+cv.addEventListener('touchend', () => juego.onMouseUp());
+window.addEventListener('keydown', e => juego.onKeyDown(e.key));
+
+let ultimo = performance.now();
+function loop(ahora){
+  const dt = Math.min(0.05, (ahora - ultimo)/1000);
+  ultimo = ahora;
+  juego.actualizar(dt);
+  juego.dibujar();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
