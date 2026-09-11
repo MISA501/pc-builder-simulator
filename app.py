@@ -9,6 +9,8 @@ def index():
 
 @app.route('/jugar')
 def jugar():
+    # Aquí decides qué hacer al presionar "Jugar 2D"
+    # Ejemplo: correr tu main.py
     subprocess.run(['python', 'main.py'])
     return "El juego se está ejecutando en el servidor."
 

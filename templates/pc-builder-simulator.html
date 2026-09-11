@@ -301,6 +301,17 @@ canvas#particles{
 }
 @keyframes ledFlow{ 0%{background-position:0% 0;} 100%{background-position:200% 0;} }
 
+/* ============================================================
+   CABLEADO — cables reales de energía (PSU -> CPU/GPU/SSD/Cooler)
+   ============================================================ */
+.cable-layer{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+.cable-base{ stroke:#12161c; stroke-width:7; fill:none; stroke-linecap:round; }
+.cable-sleeve{ stroke:#3a4552; stroke-width:2; fill:none; stroke-linecap:round; opacity:0.65; }
+.cable-plug{ fill:#caa53d; stroke:#5c4415; stroke-width:1; }
+.cable-pulse{ stroke:var(--accent); stroke-width:2.2; fill:none; stroke-linecap:round; stroke-dasharray:8 14; opacity:0; transition:opacity .3s ease; }
+.cable-layer.powered .cable-pulse{ opacity:0.85; animation:cableFlow 1s linear infinite; }
+@keyframes cableFlow{ to{ stroke-dashoffset:-44; } }
+
 /* monitor */
 .monitor{
   width:100%; max-width:640px;
@@ -311,12 +322,19 @@ canvas#particles{
   box-shadow:0 20px 40px rgba(0,0,0,0.5);
 }
 .screen{
-  height:150px; border-radius:10px;
+  height:190px; border-radius:10px;
   background:#000;
   display:flex; align-items:center; justify-content:center;
   font-family:'Consolas','Courier New',monospace; font-size:13px; color:var(--neon);
   position:relative; overflow:hidden; text-align:center; padding:14px; line-height:1.6;
 }
+.os-choice-buttons{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:10px; }
+.os-choice-buttons button{
+  font-family:var(--font-body); font-weight:700; font-size:11.5px; padding:7px 12px; border-radius:8px;
+  border:1px solid var(--accent); background:rgba(0,255,136,0.08); color:var(--text-hi); cursor:pointer;
+  transition:background .15s ease, transform .15s ease;
+}
+.os-choice-buttons button:hover{ background:rgba(0,255,136,0.22); transform:translateY(-2px); }
 .screen::after{ /* scanline */
   content:''; position:absolute; inset:0;
   background:repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 4px);
@@ -412,6 +430,28 @@ canvas#particles{
   display:flex; align-items:center; justify-content:center; padding:20px;
 }
 #score-overlay.hidden{ display:none; }
+
+/* glosario BIOS / SO */
+#glossary-overlay{
+  position:fixed; inset:0; z-index:220;
+  background:rgba(3,5,8,0.82); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#glossary-overlay.hidden{ display:none; }
+
+/* modal de detalles del SO elegido (programas / distros / comandos) */
+#os-details-overlay{
+  position:fixed; inset:0; z-index:225;
+  background:rgba(3,5,8,0.85); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#os-details-overlay.hidden{ display:none; }
+.os-tag-list{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 16px; }
+.os-tag{ font-size:12px; padding:6px 10px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:var(--text-hi); }
+.os-cmd-table{ width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12.5px; }
+.os-cmd-table td{ padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.06); vertical-align:top; }
+.os-cmd-table td:first-child{ font-family:'Consolas','Courier New',monospace; color:var(--accent); white-space:nowrap; font-weight:700; }
+.os-cmd-table td:last-child{ color:var(--text-lo); }
 .score-card{
   max-width:460px; width:100%; text-align:center;
   background:linear-gradient(160deg,#141b26,#0b0e14);
@@ -442,8 +482,7 @@ canvas#particles{
 </style>
 </head>
 <body>
-<button onclick="window.location.href='/jugar'">Jugar 2d</button>
-
+<button onclick="window.location.href='/jugar'">Jugar 2D</button>
 <canvas id="particles"></canvas>
 
 <div class="app">
@@ -458,6 +497,7 @@ canvas#particles{
     </div>
     <div class="topbar-actions">
       <button class="btn" id="btn-tutorial">📘 Tutorial</button>
+      <button class="btn" id="btn-glossary">📖 BIOS y SO</button>
       <button class="btn" id="btn-rgb">🌈 Modo RGB</button>
       <button class="btn" id="btn-reset">🔄 Reiniciar</button>
     </div>
@@ -480,6 +520,7 @@ canvas#particles{
           <div class="mobo-grid" id="mobo-grid">
             <!-- slots injected by JS -->
           </div>
+          <svg id="cable-layer" class="cable-layer"></svg>
           <div class="led-strip" id="led-strip"></div>
         </div>
 
@@ -542,6 +583,31 @@ canvas#particles{
   </div>
 </div>
 
+<!-- ============ GLOSARIO: BIOS / SISTEMA OPERATIVO / WINDOWS-LINUX-MAC ============ -->
+<div id="glossary-overlay" class="hidden">
+  <div class="tutorial-card" style="max-width:560px; max-height:82vh; overflow-y:auto;">
+    <h3 style="font-family:var(--font-display); color:var(--accent); font-size:14px; letter-spacing:1px; margin:0 0 10px;">🧾 ¿Qué es la BIOS?</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 16px;">Es el primer programa que corre tu PC al encenderla, antes que Windows, Linux o macOS. Revisa que el CPU, la RAM y las demás piezas respondan bien. Es como el <b>portero de un edificio</b>: revisa que todo esté en orden antes de dejar pasar al Sistema Operativo.</p>
+    <h3 style="font-family:var(--font-display); color:var(--accent); font-size:14px; letter-spacing:1px; margin:0 0 10px;">🖥️ ¿Cómo funciona el Sistema Operativo?</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 16px;">Cuando la BIOS confirma que el hardware está bien, el Sistema Operativo toma el control: organiza tus archivos, deja que abras programas, y "traduce" lo que tú haces (mover el mouse, escribir, jugar) para que el CPU, la RAM y la GPU lo entiendan. Es el <b>gerente</b> de toda la casa.</p>
+    <h3 style="font-family:var(--font-display); color:var(--accent); font-size:14px; letter-spacing:1px; margin:0 0 10px;">🪟🐧🍎 Windows, Linux y macOS</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 6px;"><b style="color:#00c8ff">Windows:</b> el más usado en casa y oficina; compatible con casi cualquier programa o videojuego. Lo hace Microsoft.</p>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 6px;"><b style="color:#ffb020">Linux:</b> gratuito y de código abierto — cualquiera puede ver y modificar cómo funciona por dentro. Es el favorito para servidores de internet y para quienes quieren personalizarlo todo.</p>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 16px;"><b style="color:#c400ff">macOS:</b> solo corre en computadoras Apple (Mac). Conocido por su diseño cuidado; muy usado por diseñadores y editores de video.</p>
+    <button class="btn primary" id="btn-close-glossary" style="width:100%; justify-content:center;">Entendido</button>
+  </div>
+</div>
+
+<!-- ============ DETALLES DEL SO ELEGIDO (programas / distros / comandos) ============ -->
+<div id="os-details-overlay" class="hidden">
+  <div class="tutorial-card" style="max-width:540px; max-height:82vh; overflow-y:auto;">
+    <h3 id="os-details-title" style="font-family:var(--font-display); font-size:16px; margin:0 0 4px; letter-spacing:1px;"></h3>
+    <p id="os-details-tagline" style="font-size:12.5px; color:var(--text-lo); margin:0 0 16px;"></p>
+    <div id="os-details-body"></div>
+    <button class="btn primary" id="btn-continue-os" style="width:100%; justify-content:center;">Continuar arranque →</button>
+  </div>
+</div>
+
 <!-- hint toast -->
 <div id="hint-toast"></div>
 
@@ -594,6 +660,45 @@ const PARTS = {
 
 // orden en que aparecen en la bandeja
 const TRAY_ORDER = ['cpu','cooler','ram1','ram2','gpu','ssd','psu'];
+
+/* Sistemas operativos disponibles para "instalar" tras pasar la BIOS */
+const OS_INFO = {
+  windows: { name:'Windows', tagline:'El más usado en casa y oficina', color:'#00c8ff',
+    desc:'Windows es el Sistema Operativo más popular del mundo, hecho por Microsoft. Es compatible con muchísimos programas y con la mayoría de los videojuegos.',
+    programs: ['Microsoft Word / Excel / PowerPoint', 'Google Chrome / Edge', 'Steam (videojuegos)', 'Adobe Photoshop', 'Visual Studio Code', 'Spotify'],
+    commands: [
+      { cmd:'dir', desc:'lista los archivos de una carpeta' },
+      { cmd:'cd carpeta', desc:'entra a una carpeta' },
+      { cmd:'cls', desc:'limpia la pantalla de la terminal' },
+      { cmd:'ipconfig', desc:'muestra la información de tu red' },
+      { cmd:'taskkill', desc:'cierra un programa a la fuerza' }
+    ]
+  },
+  linux: { name:'Linux', tagline:'Gratis, personalizable y usado en servidores', color:'#ffb020',
+    desc:'Linux es gratuito y de "código abierto": cualquiera puede ver y modificar cómo funciona por dentro. Es el favorito para servidores de internet y para quien quiere personalizar todo.',
+    distros: ['Ubuntu (el más amigable para empezar)', 'Debian (muy estable, base de otros)', 'Fedora (tecnología reciente)', 'Linux Mint (parecido a Windows)', 'Arch Linux (100% personalizable, para expertos)'],
+    programs: ['LibreOffice (como Word/Excel gratis)', 'GIMP (como Photoshop gratis)', 'Firefox', 'Visual Studio Code', 'Blender (animación 3D)', 'Terminal / Bash'],
+    commands: [
+      { cmd:'ls', desc:'lista los archivos de una carpeta' },
+      { cmd:'cd carpeta', desc:'entra a una carpeta' },
+      { cmd:'pwd', desc:'muestra en qué carpeta estás parado' },
+      { cmd:'sudo apt install algo', desc:'instala un programa nuevo' },
+      { cmd:'rm archivo', desc:'borra un archivo' },
+      { cmd:'chmod +x archivo', desc:'da permiso de ejecución a un archivo' }
+    ]
+  },
+  mac: { name:'macOS', tagline:'Solo en computadoras Apple', color:'#c400ff',
+    desc:'macOS solo corre en computadoras Apple (Mac). Es conocido por su diseño cuidado y lo prefieren muchos diseñadores y editores de video.',
+    programs: ['Pages / Numbers / Keynote', 'Final Cut Pro (edición de video)', 'Logic Pro (música)', 'Safari', 'Xcode (crear apps)', 'Photos'],
+    commands: [
+      { cmd:'ls', desc:'lista los archivos de una carpeta' },
+      { cmd:'cd carpeta', desc:'entra a una carpeta' },
+      { cmd:'pwd', desc:'muestra en qué carpeta estás parado' },
+      { cmd:'brew install algo', desc:'instala un programa nuevo (Homebrew)' },
+      { cmd:'open .', desc:'abre la carpeta actual en el Finder' }
+    ]
+  }
+};
 
 /* ---------------------------------------------------------------
    2. ESTADO DEL JUEGO
@@ -728,7 +833,55 @@ function renderSlots(){
     });
     grid.appendChild(el);
   });
+  updateCables();
 }
+
+/* ---------------------------------------------------------------
+   5-b. CABLEADO — cables reales de energía sobre la placa
+   --------------------------------------------------------------- */
+const CABLE_DEFS = [
+  { from:'psu-slot', to:'cpu-slot',    need:['psu','cpu']    },
+  { from:'psu-slot', to:'gpu-slot',    need:['psu','gpu']    },
+  { from:'psu-slot', to:'ssd-slot',    need:['psu','ssd']    },
+  { from:'psu-slot', to:'cooler-slot', need:['psu','cooler'] }
+];
+
+function updateCables(){
+  const tower = document.getElementById('tower');
+  const svg = document.getElementById('cable-layer');
+  if(!tower || !svg) return;
+  const towerRect = tower.getBoundingClientRect();
+  if(towerRect.width === 0) return;
+  svg.setAttribute('viewBox', `0 0 ${towerRect.width} ${towerRect.height}`);
+  svg.innerHTML = '';
+
+  function centerOf(id){
+    const el = document.getElementById(id);
+    if(!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width/2 - towerRect.left, y: r.top + r.height/2 - towerRect.top };
+  }
+
+  const ns = 'http://www.w3.org/2000/svg';
+  CABLE_DEFS.forEach(def => {
+    if(!def.need.every(k => state.installed[k])) return;
+    const p1 = centerOf(def.from), p2 = centerOf(def.to);
+    if(!p1 || !p2) return;
+    const sagY = Math.max(p1.y, p2.y) + 42; // simula que el cable "cuelga" un poco, como en la vida real
+    const d = `M ${p1.x} ${p1.y} C ${p1.x} ${sagY}, ${p2.x} ${sagY}, ${p2.x} ${p2.y}`;
+    const base   = document.createElementNS(ns,'path'); base.setAttribute('d', d);   base.setAttribute('class','cable-base');
+    const sleeve = document.createElementNS(ns,'path'); sleeve.setAttribute('d', d); sleeve.setAttribute('class','cable-sleeve');
+    const pulse  = document.createElementNS(ns,'path'); pulse.setAttribute('d', d);  pulse.setAttribute('class','cable-pulse');
+    svg.appendChild(base); svg.appendChild(sleeve); svg.appendChild(pulse);
+    [p1,p2].forEach(p=>{
+      const c = document.createElementNS(ns,'circle');
+      c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', 5);
+      c.setAttribute('class','cable-plug');
+      svg.appendChild(c);
+    });
+  });
+}
+window.addEventListener('resize', ()=> requestAnimationFrame(updateCables));
 
 /* ---------------------------------------------------------------
    6. LÓGICA DE DROP + VALIDACIÓN
@@ -744,6 +897,7 @@ function handleDrop(droppedId, expectedId, slotEl){
     log(`✔ ${PARTS[droppedId].name} instalada correctamente.`, 'ok');
     renderTray();
     updateProgress();
+    updateCables();
     pulseFillAnim(slotEl);
   } else {
     // incorrecto -> pieza tiembla
@@ -856,6 +1010,7 @@ function powerUpSequence(){
   powerBtn.classList.add('on');
   ledStrip.classList.add('on');
   document.getElementById('tower').classList.toggle('rgb-mode', true);
+  document.getElementById('cable-layer').classList.add('powered'); // los cables empiezan a "brillar" con electricidad
   sfxPowerOn();
   startFanHum();
   spinFans(true);
@@ -864,18 +1019,109 @@ function powerUpSequence(){
   screenEl.textContent = 'Iniciando...';
   log('⚡ Fuente estable. CPU responde. Arrancando sistema...', 'ok');
 
+  // 1) La BIOS revisa el hardware (POST) antes que nada
   setTimeout(() => {
-    screenEl.textContent = 'Cargando componentes...\n' + buildSummaryLine();
+    screenEl.textContent = '🧾 BIOS: revisando hardware...\n' + buildSummaryLine();
+    log('🧾 BIOS: es el primer programa que se ejecuta al encender. Revisa que cada pieza responda antes de dejar entrar al Sistema Operativo — como un portero que revisa todo antes de abrir la puerta.', '');
   }, 700);
 
+  // 2) Con el hardware validado, la BIOS busca dónde arrancar el Sistema Operativo
   setTimeout(() => {
-    finishBootAndScore();
+    const has = state.installed;
+    if(!has.ssd){
+      log('⛔ La BIOS terminó de revisar el hardware, pero no encontró un SSD: sin almacenamiento no hay dónde instalar un Sistema Operativo.', 'err');
+      showHint('💾 Sin SSD no se puede iniciar Windows, Linux ni macOS — necesitas un disco para guardarlo.');
+      screenEl.textContent = 'BIOS OK ✔ — Sin disco de arranque (no SSD)';
+      setTimeout(() => finishBootAndScore(), 900);
+    } else {
+      renderOsChoicePrompt();
+    }
   }, 1700);
 }
 
 function buildSummaryLine(){
   const extras = ['gpu','ssd','cooler'].filter(k=>state.installed[k]).length;
   return `Módulos opcionales detectados: ${extras}/3`;
+}
+
+/* ---------------------------------------------------------------
+   10-b. BIOS -> SISTEMA OPERATIVO (Windows / Linux / macOS)
+   --------------------------------------------------------------- */
+function renderOsChoicePrompt(){
+  log('🖥️ La BIOS encontró un disco de arranque. Ahora tú decides qué Sistema Operativo inicia.', 'ok');
+  screenEl.className = 'screen off boot';
+  screenEl.innerHTML = `
+    <div style="width:100%;">
+      💾 Disco de arranque detectado.<br>¿Qué Sistema Operativo quieres iniciar?
+      <div class="os-choice-buttons">
+        <button data-os="windows">🪟 Windows</button>
+        <button data-os="linux">🐧 Linux</button>
+        <button data-os="mac">🍎 macOS</button>
+      </div>
+    </div>`;
+  screenEl.querySelectorAll('[data-os]').forEach(btn=>{
+    btn.addEventListener('click', ()=> showOsDetailsModal(btn.dataset.os));
+  });
+}
+
+/* modal con programas típicos / distros de Linux / comandos principales */
+let pendingOsKey = null;
+function showOsDetailsModal(osKey){
+  const os = OS_INFO[osKey];
+  sfxClickInstall();
+  pendingOsKey = osKey;
+  document.getElementById('os-details-title').innerHTML = `<span style="color:${os.color}">${os.name}</span>`;
+  document.getElementById('os-details-tagline').textContent = os.tagline;
+
+  let html = `<p style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 14px;">${os.desc}</p>`;
+
+  if(os.distros){
+    html += `<h4 style="font-family:var(--font-display); font-size:11.5px; color:var(--accent); letter-spacing:1px; margin:0 0 8px;">🐧 DISTRIBUCIONES (DISTROS) MÁS CONOCIDAS</h4>`;
+    html += `<div class="os-tag-list">${os.distros.map(d=>`<span class="os-tag">${d}</span>`).join('')}</div>`;
+  }
+
+  html += `<h4 style="font-family:var(--font-display); font-size:11.5px; color:var(--accent); letter-spacing:1px; margin:0 0 8px;">📦 PROGRAMAS TÍPICOS</h4>`;
+  html += `<div class="os-tag-list">${os.programs.map(p=>`<span class="os-tag">${p}</span>`).join('')}</div>`;
+
+  html += `<h4 style="font-family:var(--font-display); font-size:11.5px; color:var(--accent); letter-spacing:1px; margin:0 0 8px;">⌨️ COMANDOS PRINCIPALES DE TERMINAL</h4>`;
+  html += `<table class="os-cmd-table"><tbody>${os.commands.map(c=>`<tr><td>${c.cmd}</td><td>${c.desc}</td></tr>`).join('')}</tbody></table>`;
+
+  document.getElementById('os-details-body').innerHTML = html;
+  document.getElementById('os-details-overlay').classList.remove('hidden');
+}
+document.getElementById('btn-continue-os').addEventListener('click', ()=>{
+  document.getElementById('os-details-overlay').classList.add('hidden');
+  if(pendingOsKey) chooseOS(pendingOsKey);
+});
+
+function chooseOS(osKey){
+  const os = OS_INFO[osKey];
+  sfxClickInstall();
+  screenEl.className = 'screen off boot';
+  screenEl.textContent = `Iniciando ${os.name}...`;
+  log(`🖥️ Elegiste iniciar ${os.name}.`, 'ok');
+  log(`ℹ️ ${os.desc}`, '');
+  log('🖥️ El Sistema Operativo es el "gerente" de la PC: organiza tus archivos, abre tus programas y le habla a cada pieza de hardware sin que tú tengas que saber cómo funciona por dentro.', '');
+  setTimeout(() => showOsDesktopMock(osKey), 900);
+}
+
+function showOsDesktopMock(osKey){
+  const os = OS_INFO[osKey];
+  let bar;
+  if(osKey === 'windows'){
+    bar = `<div style="background:#0a1e2e;border-radius:6px;padding:7px 12px;display:flex;justify-content:space-between;align-items:center;width:100%;font-size:11px;"><span>⊞ Inicio</span><span style="opacity:0.7;">${os.tagline}</span></div>`;
+  } else if(osKey === 'linux'){
+    bar = `<div style="background:#1a1206;border:1px solid #ffb020;border-radius:6px;padding:7px 12px;font-family:'Consolas',monospace;width:100%;font-size:11px;">user@buildmaster:~$ <span style="opacity:0.6;">_</span></div>`;
+  } else {
+    bar = `<div style="background:rgba(255,255,255,0.1);border-radius:20px;padding:7px 18px;display:inline-flex;gap:12px;font-size:14px;">🍎 📁 🌐 🎵</div>`;
+  }
+  screenEl.className = 'screen off';
+  screenEl.innerHTML = `
+    <div style="width:100%; display:flex; flex-direction:column; align-items:center; gap:10px;">
+      <div style="font-size:12px;">Escritorio de <b style="color:${os.color}">${os.name}</b> listo ✅</div>
+      ${bar}
+    </div>`;
+  setTimeout(() => finishBootAndScore(osKey), 1200);
 }
 
 function spinFans(on){
@@ -887,13 +1133,14 @@ function spinFans(on){
   }
 }
 
-function finishBootAndScore(){
+function finishBootAndScore(osKey){
   const score = computeScore();
   const perfect = Object.values(state.installed).every(Boolean);
+  const osLabel = (osKey && OS_INFO[osKey]) ? ` (${OS_INFO[osKey].name})` : '';
 
   screenEl.className = 'screen off';
-  screenEl.textContent = `PC LISTA ✅\nRendimiento: ${score.total}/100`;
-  log(`✅ Arranque exitoso. Puntaje final: ${score.total}/100`, 'ok');
+  screenEl.textContent = `PC LISTA${osLabel} ✅\nRendimiento: ${score.total}/100`;
+  log(`✅ Arranque exitoso${osLabel}. Puntaje final: ${score.total}/100`, 'ok');
 
   document.getElementById('p-compat').textContent = score.compat + '%';
   document.getElementById('fill-compat').style.width = score.compat + '%';
@@ -922,6 +1169,7 @@ function turnOff(){
   powerBtn.classList.remove('on');
   ledStrip.classList.remove('on');
   document.getElementById('tower').classList.remove('rgb-mode');
+  document.getElementById('cable-layer').classList.remove('powered');
   stopFanHum();
   spinFans(false);
   screenEl.className = 'screen off';
@@ -978,6 +1226,13 @@ document.getElementById('btn-rgb').addEventListener('click', ()=>{
     document.documentElement.style.setProperty('--accent', '#00ff88');
     log('Modo RGB desactivado.', '');
   }
+});
+
+document.getElementById('btn-glossary').addEventListener('click', ()=>{
+  document.getElementById('glossary-overlay').classList.remove('hidden');
+});
+document.getElementById('btn-close-glossary').addEventListener('click', ()=>{
+  document.getElementById('glossary-overlay').classList.add('hidden');
 });
 
 document.getElementById('btn-reset').addEventListener('click', ()=>{
