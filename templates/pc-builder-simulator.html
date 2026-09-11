@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BUILD://MASTER — Simulador de Ensamblaje PC</title>
+<style>
+/* ============================================================
+   DESIGN TOKENS — paleta estilo Razer/Corsair
+   ============================================================ */
+:root{
+  --bg-void:#05060a;
+  --bg-panel:#0d1016;
+  --bg-panel-2:#11151d;
+  --glass:rgba(20,26,36,0.55);
+  --border-soft:rgba(255,255,255,0.08);
+  --neon:#00ff88;
+  --neon-dim:rgba(0,255,136,0.35);
+  --electric:#00c8ff;
+  --danger:#ff2f4e;
+  --warn:#ffb020;
+  --text-hi:#eef3f7;
+  --text-lo:#8a93a3;
+  --accent: var(--neon);
+  --radius-lg:22px;
+  --radius-md:14px;
+  --radius-sm:8px;
+  --font-display: 'Orbitron', 'Segoe UI', sans-serif;
+  --font-body: 'Rajdhani', 'Segoe UI', sans-serif;
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0;
+  min-height:100vh;
+  background:
+    radial-gradient(1200px 700px at 15% -10%, rgba(0,255,136,0.07), transparent 60%),
+    radial-gradient(1000px 600px at 110% 10%, rgba(0,200,255,0.08), transparent 55%),
+    var(--bg-void);
+  font-family:var(--font-body), sans-serif;
+  color:var(--text-hi);
+  overflow-x:hidden;
+  position:relative;
+}
+
+@font-face{ /* fallback safe - system fonts used, kept for structure */ }
+
+canvas#particles{
+  position:fixed; inset:0; width:100%; height:100%;
+  z-index:0; pointer-events:none; opacity:0.6;
+}
+
+/* ============================================================
+   LAYOUT SHELL
+   ============================================================ */
+.app{
+  position:relative; z-index:1;
+  max-width:1440px; margin:0 auto;
+  padding:18px 20px 60px;
+}
+
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 22px; margin-bottom:20px;
+  background:var(--glass);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg);
+  backdrop-filter:blur(18px) saturate(140%);
+  box-shadow:0 8px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.brand{
+  display:flex; align-items:center; gap:12px;
+  font-family:var(--font-display); letter-spacing:2px;
+  font-size:18px; font-weight:700;
+}
+.brand-mark{
+  width:38px; height:38px; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(145deg,#0d1420,#182234);
+  border:1px solid var(--neon-dim);
+  box-shadow:0 0 18px var(--neon-dim), inset 0 0 8px rgba(0,255,136,0.2);
+  font-size:20px;
+  animation:pulseMark 3s ease-in-out infinite;
+}
+@keyframes pulseMark{
+  0%,100%{ box-shadow:0 0 12px var(--neon-dim), inset 0 0 8px rgba(0,255,136,0.15); }
+  50%{ box-shadow:0 0 26px var(--accent), inset 0 0 12px rgba(0,255,136,0.35); }
+}
+.brand small{
+  display:block; font-family:var(--font-body); letter-spacing:1px;
+  color:var(--text-lo); font-size:11px; font-weight:600;
+}
+
+.topbar-actions{ display:flex; gap:10px; align-items:center; }
+
+.btn{
+  font-family:var(--font-body); font-weight:700; letter-spacing:0.5px;
+  font-size:13px; cursor:pointer; border:none; border-radius:var(--radius-sm);
+  padding:10px 16px; color:var(--text-hi);
+  background:linear-gradient(160deg,#161c26,#0f141c);
+  border:1px solid var(--border-soft);
+  transition:transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+  display:flex; align-items:center; gap:8px;
+}
+.btn:hover{ transform:translateY(-2px); border-color:var(--accent); box-shadow:0 6px 20px rgba(0,0,0,0.4), 0 0 14px var(--neon-dim); }
+.btn:active{ transform:translateY(0px) scale(.97); }
+.btn.primary{ background:linear-gradient(160deg, var(--neon), #00c46e); color:#04140b; box-shadow:0 0 18px var(--neon-dim);}
+.btn.primary:hover{ box-shadow:0 0 28px var(--accent); }
+.btn.ghost{ background:transparent; }
+
+/* main grid */
+.stage{
+  display:grid;
+  grid-template-columns: 300px 1fr 320px;
+  gap:20px;
+  align-items:start;
+}
+@media (max-width: 1100px){
+  .stage{ grid-template-columns: 1fr; }
+}
+
+.panel{
+  background:var(--glass);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg);
+  backdrop-filter:blur(16px) saturate(130%);
+  box-shadow:0 10px 34px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03);
+  padding:18px;
+}
+.panel h2{
+  font-family:var(--font-display); font-size:13px; letter-spacing:2px;
+  color:var(--accent); margin:0 0 14px; display:flex; align-items:center; gap:8px;
+  text-transform:uppercase;
+}
+.panel h2 .dot{ width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); }
+
+/* ============================================================
+   TRAY DE PIEZAS (drag sources)
+   ============================================================ */
+#tray{ display:flex; flex-direction:column; gap:12px; }
+
+.part-card{
+  position:relative;
+  display:flex; align-items:center; gap:12px;
+  padding:12px 12px;
+  background:linear-gradient(160deg,#141a24,#0d1119);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-md);
+  cursor:grab;
+  transition:transform .18s ease, box-shadow .25s ease, border-color .2s ease, opacity .3s ease;
+  user-select:none;
+}
+.part-card:hover{
+  transform:translateY(-3px) scale(1.02);
+  border-color:var(--accent);
+  box-shadow:0 8px 22px rgba(0,0,0,0.5), 0 0 18px var(--neon-dim);
+}
+.part-card.dragging{ opacity:0.35; cursor:grabbing; }
+.part-card.installed{
+  opacity:0.35; cursor:default; pointer-events:none;
+  filter:grayscale(0.6);
+}
+.part-icon{
+  width:46px; height:46px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; border-radius:10px;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.08), transparent 60%), #0a0e14;
+  border:1px solid rgba(255,255,255,0.06);
+}
+.part-info{ min-width:0; }
+.part-name{ font-weight:700; font-size:14px; line-height:1.2; }
+.part-sub{ font-size:11.5px; color:var(--text-lo); }
+
+/* tooltip educativo */
+.tooltip{
+  position:absolute; left:100%; top:0; margin-left:12px; width:250px;
+  background:linear-gradient(160deg,#151b26,#0b0f16);
+  border:1px solid var(--accent);
+  border-radius:var(--radius-md);
+  padding:14px; font-size:13px; line-height:1.5; color:var(--text-hi);
+  box-shadow:0 12px 30px rgba(0,0,0,0.55), 0 0 20px var(--neon-dim);
+  opacity:0; pointer-events:none; transform:translateX(-6px);
+  transition:opacity .2s ease, transform .2s ease;
+  z-index:50;
+}
+.part-card:hover .tooltip{ opacity:1; transform:translateX(0); }
+.tooltip b{ color:var(--accent); display:block; margin-bottom:4px; font-size:13px;}
+@media (max-width:1100px){
+  .tooltip{ left:0; top:100%; margin-left:0; margin-top:10px; width:100%; }
+}
+
+/* ============================================================
+   CASE / MOTHERBOARD VISUAL
+   ============================================================ */
+.case-wrap{ display:flex; flex-direction:column; gap:16px; align-items:center; }
+
+.tower{
+  position:relative;
+  width:100%; max-width:640px;
+  padding:26px;
+  border-radius:26px;
+  background:
+    linear-gradient(160deg, #0e131b 0%, #090b10 60%);
+  border:1px solid rgba(255,255,255,0.06);
+  box-shadow:
+    0 30px 60px rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(255,255,255,0.02),
+    inset 0 40px 60px rgba(255,255,255,0.02);
+}
+.tower::before{ /* glass side panel sheen */
+  content:''; position:absolute; inset:0; border-radius:26px;
+  background:linear-gradient(120deg, rgba(255,255,255,0.05) 0%, transparent 30%);
+  pointer-events:none;
+}
+.tower.rgb-mode{
+  animation:caseGlow 6s linear infinite;
+}
+@keyframes caseGlow{
+  0%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(255,0,80,0.35); }
+  25%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,255,136,0.35); }
+  50%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(0,200,255,0.35); }
+  75%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(190,0,255,0.35); }
+  100%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(255,0,80,0.35); }
+}
+
+.mobo-grid{
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto auto;
+  gap:12px;
+  grid-template-areas:
+    "cpu cpu cooler ram1"
+    "gpu gpu gpu ram2"
+    "ssd psu psu psu";
+  padding:16px;
+  border-radius:18px;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 24px),
+    linear-gradient(160deg,#0b1620,#081019);
+  border:1px solid rgba(0,255,136,0.12);
+}
+
+.slot{
+  position:relative;
+  border-radius:12px;
+  border:1.5px dashed rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.02);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; padding:12px 8px; min-height:78px;
+  transition: box-shadow .2s ease, border-color .2s ease, background .2s ease, transform .12s ease;
+}
+.slot .slot-label{ font-size:10.5px; letter-spacing:1px; color:var(--text-lo); text-transform:uppercase; font-weight:700;}
+.slot .slot-icon{ font-size:22px; opacity:0.35; }
+.slot.cpu-slot{ grid-area:cpu; }
+.slot.cooler-slot{ grid-area:cooler; }
+.slot.ram1-slot{ grid-area:ram1; }
+.slot.ram2-slot{ grid-area:ram2; }
+.slot.gpu-slot{ grid-area:gpu; min-height:70px; }
+.slot.ssd-slot{ grid-area:ssd; }
+.slot.psu-slot{ grid-area:psu; }
+
+.slot.drag-over{
+  border-color:var(--accent);
+  background:rgba(0,255,136,0.08);
+  box-shadow:0 0 22px var(--neon-dim);
+  transform:scale(1.03);
+}
+.slot.filled{
+  border-style:solid; border-color:var(--accent);
+  background:linear-gradient(160deg, rgba(0,255,136,0.12), rgba(0,255,136,0.02));
+  box-shadow:0 0 20px var(--neon-dim), inset 0 0 12px rgba(0,255,136,0.15);
+}
+.slot.filled .slot-icon{ opacity:1; filter:drop-shadow(0 0 6px var(--accent)); }
+.slot.error-shake{ animation:shake .4s ease; border-color:var(--danger); box-shadow:0 0 20px rgba(255,47,78,0.5); }
+@keyframes shake{
+  0%,100%{ transform:translateX(0); }
+  20%{ transform:translateX(-8px) rotate(-2deg); }
+  40%{ transform:translateX(8px) rotate(2deg); }
+  60%{ transform:translateX(-6px) rotate(-1deg); }
+  80%{ transform:translateX(6px) rotate(1deg); }
+}
+
+/* fan spin */
+.fan-icon{ display:inline-block; }
+.spinning{ animation:spin 0.5s linear infinite; }
+@keyframes spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+
+/* LED strip on case */
+.led-strip{
+  position:absolute; left:16px; right:16px; bottom:10px; height:6px; border-radius:6px;
+  background:rgba(255,255,255,0.05); overflow:hidden;
+}
+.led-strip.on{
+  background:linear-gradient(90deg, var(--neon), var(--electric), var(--neon));
+  background-size:200% 100%;
+  animation:ledFlow 2.5s linear infinite;
+  box-shadow:0 0 16px var(--neon);
+}
+@keyframes ledFlow{ 0%{background-position:0% 0;} 100%{background-position:200% 0;} }
+
+/* monitor */
+.monitor{
+  width:100%; max-width:640px;
+  border-radius:16px;
+  background:linear-gradient(160deg,#0a0d12,#050709);
+  border:1px solid rgba(255,255,255,0.07);
+  padding:10px;
+  box-shadow:0 20px 40px rgba(0,0,0,0.5);
+}
+.screen{
+  height:150px; border-radius:10px;
+  background:#000;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Consolas','Courier New',monospace; font-size:13px; color:var(--neon);
+  position:relative; overflow:hidden; text-align:center; padding:14px; line-height:1.6;
+}
+.screen::after{ /* scanline */
+  content:''; position:absolute; inset:0;
+  background:repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 4px);
+  pointer-events:none;
+}
+.screen.off{ color:#222; }
+.screen.boot{ animation:flicker 0.12s infinite; }
+@keyframes flicker{
+  0%,100%{ opacity:1; } 50%{ opacity:0.85; }
+}
+.screen.bsod{
+  background:#0033cc; color:#fff; animation:bsodFlash 0.35s infinite;
+}
+@keyframes bsodFlash{
+  0%{ background:#0033cc; }
+  33%{ background:#00cc66; }
+  66%{ background:#cc0044; }
+  100%{ background:#0033cc; }
+}
+
+/* power button */
+.power-row{ display:flex; gap:14px; align-items:center; justify-content:center; margin-top:6px; }
+.power-btn{
+  width:64px; height:64px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #1a222c, #0a0e13);
+  border:2px solid rgba(255,255,255,0.15);
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; color:var(--text-lo); cursor:pointer;
+  transition:all .2s ease;
+}
+.power-btn:hover{ border-color:var(--accent); color:var(--accent); box-shadow:0 0 20px var(--neon-dim); }
+.power-btn.on{ color:var(--neon); border-color:var(--neon); box-shadow:0 0 24px var(--neon); }
+.power-btn:active{ transform:scale(0.92); }
+
+/* ============================================================
+   RIGHT PANEL — CONSOLE LOG + SCORE
+   ============================================================ */
+#console-log{
+  display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto;
+  font-family:'Consolas','Courier New',monospace; font-size:12.5px;
+}
+#console-log::-webkit-scrollbar{ width:6px; }
+#console-log::-webkit-scrollbar-thumb{ background:var(--accent); border-radius:6px; }
+.log-line{ color:var(--text-lo); opacity:0; animation:fadeIn .3s forwards; }
+.log-line.ok{ color:var(--neon); }
+.log-line.err{ color:var(--danger); }
+.log-line.warn{ color:var(--warn); }
+@keyframes fadeIn{ to{ opacity:1; } }
+
+.progress-wrap{ margin-top:16px; }
+.progress-item{ margin-bottom:10px; }
+.progress-label{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-lo); margin-bottom:4px; }
+.progress-bar{ height:8px; border-radius:6px; background:rgba(255,255,255,0.06); overflow:hidden; }
+.progress-fill{ height:100%; border-radius:6px; background:linear-gradient(90deg,var(--neon),var(--electric)); width:0%; transition:width .8s cubic-bezier(.2,.9,.3,1); box-shadow:0 0 10px var(--neon-dim); }
+
+/* ============================================================
+   TUTORIAL OVERLAY (Linus-style walkthrough)
+   ============================================================ */
+#tutorial-overlay{
+  position:fixed; inset:0; z-index:200;
+  background:rgba(3,5,8,0.72); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+#tutorial-overlay.hidden{ display:none; }
+.tutorial-card{
+  max-width:480px; width:100%;
+  background:linear-gradient(160deg,#141b26,#0b0e14);
+  border:1px solid var(--accent);
+  border-radius:var(--radius-lg);
+  padding:26px;
+  box-shadow:0 30px 70px rgba(0,0,0,0.6), 0 0 40px var(--neon-dim);
+}
+.tutorial-host{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
+.tutorial-avatar{
+  width:48px; height:48px; border-radius:50%;
+  background:linear-gradient(160deg,#1c2733,#0c1016);
+  display:flex; align-items:center; justify-content:center; font-size:22px;
+  border:2px solid var(--accent); box-shadow:0 0 16px var(--neon-dim);
+}
+.tutorial-host b{ font-family:var(--font-display); font-size:13px; letter-spacing:1px; }
+.tutorial-host span{ display:block; font-size:11.5px; color:var(--text-lo); }
+.tutorial-text{ font-size:15px; line-height:1.6; color:var(--text-hi); margin-bottom:18px; }
+.tutorial-footer{ display:flex; justify-content:space-between; align-items:center; }
+.tutorial-steps-dots{ display:flex; gap:6px; }
+.tut-dot{ width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.15); }
+.tut-dot.active{ background:var(--accent); box-shadow:0 0 8px var(--accent); }
+
+/* score modal */
+#score-overlay{
+  position:fixed; inset:0; z-index:210;
+  background:rgba(3,5,8,0.85); backdrop-filter:blur(6px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#score-overlay.hidden{ display:none; }
+.score-card{
+  max-width:460px; width:100%; text-align:center;
+  background:linear-gradient(160deg,#141b26,#0b0e14);
+  border:1px solid var(--accent); border-radius:var(--radius-lg);
+  padding:32px 26px;
+  box-shadow:0 30px 80px rgba(0,0,0,0.65), 0 0 50px var(--neon-dim);
+}
+.score-big{ font-family:var(--font-display); font-size:56px; font-weight:700; color:var(--neon); text-shadow:0 0 24px var(--neon-dim); margin:10px 0; }
+.score-tag{ font-size:13px; letter-spacing:2px; color:var(--text-lo); text-transform:uppercase; }
+
+/* toast for hint */
+#hint-toast{
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:linear-gradient(160deg,#151b26,#0b0f16); border:1px solid var(--accent);
+  padding:12px 20px; border-radius:var(--radius-md); font-size:13.5px;
+  box-shadow:0 12px 30px rgba(0,0,0,0.5), 0 0 20px var(--neon-dim);
+  opacity:0; transition:opacity .3s ease, transform .3s ease; z-index:150; max-width:90vw;
+}
+#hint-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.spotlight-target{ position:relative; z-index:201 !important; box-shadow:0 0 0 6px rgba(0,255,136,0.25), 0 0 40px var(--neon) !important; }
+
+@media (max-width:640px){
+  .brand span{ display:none; }
+  .topbar{ flex-wrap:wrap; gap:10px; }
+  .score-big{ font-size:42px; }
+}
+</style>
+</head>
+<body>
+<button onclick="window.location.href='/jugar'">Jugar 2d</button>
+
+<canvas id="particles"></canvas>
+
+<div class="app">
+  <!-- ============ TOPBAR ============ -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">🖥️</div>
+      <div>
+        BUILD<span style="color:var(--accent)">://</span>MASTER
+        <small>Simulador de ensamblaje de PC</small>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn" id="btn-tutorial">📘 Tutorial</button>
+      <button class="btn" id="btn-rgb">🌈 Modo RGB</button>
+      <button class="btn" id="btn-reset">🔄 Reiniciar</button>
+    </div>
+  </div>
+
+  <!-- ============ STAGE ============ -->
+  <div class="stage">
+
+    <!-- LEFT: TRAY -->
+    <div class="panel">
+      <h2><span class="dot"></span>Piezas disponibles</h2>
+      <div id="tray"></div>
+    </div>
+
+    <!-- CENTER: CASE + MONITOR -->
+    <div class="panel">
+      <h2><span class="dot"></span>Gabinete</h2>
+      <div class="case-wrap">
+        <div class="tower" id="tower">
+          <div class="mobo-grid" id="mobo-grid">
+            <!-- slots injected by JS -->
+          </div>
+          <div class="led-strip" id="led-strip"></div>
+        </div>
+
+        <div class="monitor">
+          <div class="screen off" id="screen">Esperando encendido...</div>
+        </div>
+
+        <div class="power-row">
+          <div class="power-btn" id="power-btn" title="Encender">⏻</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: CONSOLE + PROGRESS -->
+    <div class="panel">
+      <h2><span class="dot"></span>Consola de sistema</h2>
+      <div id="console-log"></div>
+      <div class="progress-wrap">
+        <div class="progress-item">
+          <div class="progress-label"><span>Ensamblaje</span><span id="p-assembly">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="fill-assembly"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Compatibilidad</span><span id="p-compat">--</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="fill-compat"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TUTORIAL OVERLAY ============ -->
+<div id="tutorial-overlay">
+  <div class="tutorial-card">
+    <div class="tutorial-host">
+      <div class="tutorial-avatar">🎙️</div>
+      <div>
+        <b>LINUS // TECH MENTOR</b>
+        <span>Tu guía de ensamblaje</span>
+      </div>
+    </div>
+    <div class="tutorial-text" id="tutorial-text">¡Hola! Hoy vamos a armar una PC desde cero. No te preocupes, te voy a explicar cada pieza como si fuera la primera vez que ves una computadora por dentro.</div>
+    <div class="tutorial-footer">
+      <div class="tutorial-steps-dots" id="tutorial-dots"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn ghost" id="btn-skip">Saltar</button>
+        <button class="btn primary" id="btn-next">Siguiente →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCORE OVERLAY ============ -->
+<div id="score-overlay" class="hidden">
+  <div class="score-card">
+    <div class="score-tag">Resultado del ensamblaje</div>
+    <div class="score-big" id="score-number">0</div>
+    <div id="score-detail" style="color:var(--text-lo); font-size:13.5px; line-height:1.6; margin-bottom:20px;"></div>
+    <button class="btn primary" id="btn-close-score">Cerrar</button>
+  </div>
+</div>
+
+<!-- hint toast -->
+<div id="hint-toast"></div>
+
+<script>
+/* ================================================================
+   BUILD://MASTER — Simulador de ensamblaje de PC
+   Autor: Senior Game Dev / UI-UX (vanilla JS, un solo archivo)
+   ================================================================ */
+
+/* ---------------------------------------------------------------
+   1. DATOS DE LAS PIEZAS (analogías para gente de 12 años)
+   --------------------------------------------------------------- */
+const PARTS = {
+  cpu: {
+    id:'cpu', name:'Procesador (CPU)', icon:'🧠', slot:'cpu-slot',
+    sub:'El que piensa por todos',
+    desc:'Es el <b>cerebro</b> de la PC. Toma decisiones y hace todos los cálculos, miles de millones por segundo. Sin él, la PC no sabe ni cómo prender.'
+  },
+  cooler: {
+    id:'cooler', name:'Disipador (Cooler)', icon:'🌀', slot:'cooler-slot',
+    sub:'El aire acondicionado del cerebro',
+    desc:'El cerebro (CPU) trabaja tan rápido que se calienta mucho. El cooler es como un <b>ventilador de techo</b> que lo mantiene fresco para que no se "queme" pensando.'
+  },
+  ram1: {
+    id:'ram1', name:'Memoria RAM #1', icon:'📏', slot:'ram1-slot',
+    sub:'La mesa de trabajo',
+    desc:'Es como una <b>mesa de trabajo</b>: mientras más grande, más cosas puedes tener abiertas a la vez sin estorbarte. Sin RAM, no hay espacio para trabajar.'
+  },
+  ram2: {
+    id:'ram2', name:'Memoria RAM #2', icon:'📏', slot:'ram2-slot',
+    sub:'Refuerzo de la mesa de trabajo',
+    desc:'Una segunda mesa junto a la primera. Dos mesas juntas (Dual Channel) hacen que muevas cosas de un lado a otro mucho más rápido.'
+  },
+  gpu: {
+    id:'gpu', name:'Tarjeta Gráfica (GPU)', icon:'🎮', slot:'gpu-slot',
+    sub:'El artista que dibuja todo',
+    desc:'Es el <b>pintor</b> de la PC: dibuja cada imagen, juego y video que ves en pantalla, miles de veces por segundo. Sin ella, los juegos se ven lentos o feos.'
+  },
+  ssd: {
+    id:'ssd', name:'Almacenamiento (SSD)', icon:'💾', slot:'ssd-slot',
+    sub:'La bodega ultra rápida',
+    desc:'Es la <b>bodega</b> donde se guardan tus fotos, juegos y archivos, incluso apagada. Un SSD es una bodega con montacargas: todo se guarda y se saca súper rápido.'
+  },
+  psu: {
+    id:'psu', name:'Fuente de Poder (PSU)', icon:'🔋', slot:'psu-slot',
+    sub:'El corazón que da energía',
+    desc:'Es el <b>corazón</b> de la PC: bombea electricidad a cada pieza. Sin fuente de poder, nada enciende, ni siquiera una luz.'
+  }
+};
+
+// orden en que aparecen en la bandeja
+const TRAY_ORDER = ['cpu','cooler','ram1','ram2','gpu','ssd','psu'];
+
+/* ---------------------------------------------------------------
+   2. ESTADO DEL JUEGO
+   --------------------------------------------------------------- */
+const state = {
+  installed: { cpu:false, cooler:false, ram1:false, ram2:false, gpu:false, ssd:false, psu:false },
+  poweredOn: false,
+  rgbMode: false,
+  tutorialStep: 0,
+  perfectBuildShown: false
+};
+
+const TUTORIAL_STEPS = [
+  { text:'¡Hola! Soy tu mentor tech. Hoy vamos a armar una PC desde cero, pieza por pieza, sin tecnicismos aburridos.', target:null },
+  { text:'Primero arrastra el <b>Procesador (CPU)</b> a su slot. Es el cerebro: sin él, la PC ni siquiera intenta pensar.', target:'cpu-slot' },
+  { text:'Ahora el <b>Cooler</b>. Va justo encima del CPU para que no se sobrecaliente mientras trabaja.', target:'cooler-slot' },
+  { text:'Coloca las dos <b>memorias RAM</b>. Son la mesa de trabajo: sin espacio para trabajar, todo se hace lento y con errores.', target:'ram1-slot' },
+  { text:'La <b>Tarjeta Gráfica (GPU)</b> va en la ranura larga. Es quien dibuja todo lo que ves en pantalla.', target:'gpu-slot' },
+  { text:'El <b>SSD</b> es tu bodega de archivos. Sin él, no hay dónde guardar el sistema operativo ni tus juegos.', target:'ssd-slot' },
+  { text:'Por último, la <b>Fuente de Poder (PSU)</b>. Sin electricidad, nada de esto sirve de nada.', target:'psu-slot' },
+  { text:'¡Listo! Cuando tengas todo instalado, presiona el botón de encendido y veamos si tu PC prende. 🔥', target:null }
+];
+
+/* ---------------------------------------------------------------
+   3. AUDIO — Web Audio API (sin librerías)
+   --------------------------------------------------------------- */
+let audioCtx = null;
+function getCtx(){
+  if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  return audioCtx;
+}
+function playTone(freq, duration, type='sine', vol=0.15, delay=0){
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  gain.gain.value = vol;
+  osc.connect(gain); gain.connect(ctx.destination);
+  const t0 = ctx.currentTime + delay;
+  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  osc.start(t0); osc.stop(t0 + duration + 0.02);
+}
+function sfxClickInstall(){ playTone(720, 0.08, 'square', 0.12); }
+function sfxErrorShake(){ playTone(180, 0.15, 'sawtooth', 0.15); }
+function sfxPowerOn(){ playTone(220,0.25,'sine',0.18); playTone(440,0.3,'sine',0.15,0.15); playTone(880,0.35,'sine',0.12,0.3); }
+function sfxBeepBeep(){ playTone(1000,0.12,'square',0.16,0); playTone(1000,0.12,'square',0.16,0.25); }
+function sfxNothing(){ /* fuente ausente: silencio absoluto, ni un click */ }
+function sfxSuccess(){
+  [523,659,784,1046].forEach((f,i)=> playTone(f,0.22,'triangle',0.14, i*0.12));
+}
+
+// fan hum loop (sutil, se detiene al apagar)
+let fanNodes = null;
+function startFanHum(){
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type='sawtooth'; osc.frequency.value = 70;
+  gain.gain.value = 0.02;
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start();
+  fanNodes = {osc, gain};
+}
+function stopFanHum(){
+  if(fanNodes){ fanNodes.gain.gain.exponentialRampToValueAtTime(0.0001, getCtx().currentTime+0.3); fanNodes.osc.stop(getCtx().currentTime+0.35); fanNodes=null; }
+}
+
+/* ---------------------------------------------------------------
+   4. RENDER: bandeja de piezas
+   --------------------------------------------------------------- */
+function renderTray(){
+  const tray = document.getElementById('tray');
+  tray.innerHTML = '';
+  TRAY_ORDER.forEach(id => {
+    const p = PARTS[id];
+    const card = document.createElement('div');
+    card.className = 'part-card' + (state.installed[id] ? ' installed' : '');
+    card.draggable = !state.installed[id];
+    card.id = 'card-' + id;
+    card.innerHTML = `
+      <div class="part-icon">${p.icon}</div>
+      <div class="part-info">
+        <div class="part-name">${p.name}</div>
+        <div class="part-sub">${p.sub}</div>
+      </div>
+      <div class="tooltip"><b>¿Para qué sirve?</b>${p.desc}</div>
+    `;
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', id);
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    tray.appendChild(card);
+  });
+}
+
+/* ---------------------------------------------------------------
+   5. RENDER: slots del gabinete
+   --------------------------------------------------------------- */
+const SLOT_DEFS = [
+  {slot:'cpu-slot', accepts:'cpu', label:'CPU', icon:'🧩'},
+  {slot:'cooler-slot', accepts:'cooler', label:'Cooler', icon:'🌀'},
+  {slot:'ram1-slot', accepts:'ram1', label:'RAM 1', icon:'📏'},
+  {slot:'ram2-slot', accepts:'ram2', label:'RAM 2', icon:'📏'},
+  {slot:'gpu-slot', accepts:'gpu', label:'GPU', icon:'🎮'},
+  {slot:'ssd-slot', accepts:'ssd', label:'SSD', icon:'💾'},
+  {slot:'psu-slot', accepts:'psu', label:'PSU', icon:'🔋'}
+];
+
+function renderSlots(){
+  const grid = document.getElementById('mobo-grid');
+  grid.innerHTML = '';
+  SLOT_DEFS.forEach(def => {
+    const el = document.createElement('div');
+    el.className = 'slot ' + def.slot;
+    el.dataset.accepts = def.accepts;
+    el.id = def.slot;
+    const filled = state.installed[def.accepts];
+    if(filled) el.classList.add('filled');
+    el.innerHTML = `
+      <div class="slot-icon">${filled ? PARTS[def.accepts].icon : def.icon}</div>
+      <div class="slot-label">${def.label}</div>
+    `;
+    el.addEventListener('dragover', e => { e.preventDefault(); if(!filled) el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const droppedId = e.dataTransfer.getData('text/plain');
+      handleDrop(droppedId, def.accepts, el);
+    });
+    grid.appendChild(el);
+  });
+}
+
+/* ---------------------------------------------------------------
+   6. LÓGICA DE DROP + VALIDACIÓN
+   --------------------------------------------------------------- */
+function handleDrop(droppedId, expectedId, slotEl){
+  if(state.installed[droppedId]) return; // ya instalada
+  if(droppedId === expectedId){
+    // correcto
+    state.installed[droppedId] = true;
+    sfxClickInstall();
+    slotEl.classList.add('filled');
+    slotEl.querySelector('.slot-icon').textContent = PARTS[droppedId].icon;
+    log(`✔ ${PARTS[droppedId].name} instalada correctamente.`, 'ok');
+    renderTray();
+    updateProgress();
+    pulseFillAnim(slotEl);
+  } else {
+    // incorrecto -> pieza tiembla
+    sfxErrorShake();
+    slotEl.classList.add('error-shake');
+    setTimeout(()=> slotEl.classList.remove('error-shake'), 420);
+    log(`✖ Esa pieza no va en ese slot. Revisa la forma antes de forzarla.`, 'err');
+    showHint('Esa pieza no encaja aquí — cada slot tiene una forma distinta 🔧');
+  }
+}
+
+function pulseFillAnim(el){
+  el.style.transform = 'scale(1.08)';
+  setTimeout(()=> el.style.transform = '', 180);
+}
+
+/* ---------------------------------------------------------------
+   7. CONSOLA DE LOG
+   --------------------------------------------------------------- */
+function log(msg, cls=''){
+  const box = document.getElementById('console-log');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  const time = new Date().toLocaleTimeString('es-MX', {hour12:false});
+  line.textContent = `[${time}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------------------------------------------------------
+   8. PROGRESO / COMPATIBILIDAD
+   --------------------------------------------------------------- */
+function updateProgress(){
+  const total = Object.keys(state.installed).length;
+  const done = Object.values(state.installed).filter(Boolean).length;
+  const pct = Math.round((done/total)*100);
+  document.getElementById('p-assembly').textContent = pct + '%';
+  document.getElementById('fill-assembly').style.width = pct + '%';
+}
+
+/* ---------------------------------------------------------------
+   9. TOAST DE HINT
+   --------------------------------------------------------------- */
+let hintTimer = null;
+function showHint(msg){
+  const toast = document.getElementById('hint-toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(()=> toast.classList.remove('show'), 2600);
+}
+
+/* ---------------------------------------------------------------
+   10. POWER ON — validación real de gameplay
+   --------------------------------------------------------------- */
+const screenEl = document.getElementById('screen');
+const powerBtn = document.getElementById('power-btn');
+const ledStrip = document.getElementById('led-strip');
+
+powerBtn.addEventListener('click', () => {
+  getCtx(); // desbloquea audio con gesto de usuario
+  if(state.poweredOn){
+    turnOff();
+    return;
+  }
+  attemptPowerOn();
+});
+
+function attemptPowerOn(){
+  const has = state.installed;
+
+  // 1. Sin PSU -> literalmente nada pasa (ni sonido, ni luces)
+  if(!has.psu){
+    sfxNothing();
+    log('… (no pasa nada. Revisa la fuente de poder)', 'warn');
+    showHint('🔋 Sin fuente de poder no hay electricidad. No pasará nada hasta que la conectes.');
+    screenEl.className = 'screen off';
+    screenEl.textContent = 'Sin señal...';
+    return;
+  }
+
+  // 2. Sin CPU -> no enciende (pero la fuente sí da un poco de vida a luces)
+  if(!has.cpu){
+    playTone(140, 0.4, 'square', 0.15);
+    ledStrip.classList.remove('on');
+    log('⚠ La fuente tiene energía pero el CPU no responde. No hay cerebro, no hay encendido.', 'err');
+    showHint('🧠 Falta el CPU: la PC no puede "pensar" sin él, por eso no enciende.');
+    screenEl.className = 'screen off';
+    screenEl.textContent = 'No boot device / No CPU';
+    return;
+  }
+
+  // 3. Sin RAM (al menos una) -> beep-beep de error de POST real
+  if(!has.ram1 && !has.ram2){
+    sfxBeepBeep();
+    ledStrip.classList.add('on');
+    log('🔊 BEEP... BEEP... Error de memoria. Sin RAM no hay mesa de trabajo.', 'err');
+    showHint('📏 Beep-beep = código de error real de placas madre cuando falta RAM.');
+    screenEl.className = 'screen off';
+    screenEl.textContent = '🔊 BEEP - BEEP 🔊\n(Error: Memoria no detectada)';
+    return;
+  }
+
+  // 4. Todo lo esencial está -> enciende
+  powerUpSequence();
+}
+
+function powerUpSequence(){
+  state.poweredOn = true;
+  powerBtn.classList.add('on');
+  ledStrip.classList.add('on');
+  document.getElementById('tower').classList.toggle('rgb-mode', true);
+  sfxPowerOn();
+  startFanHum();
+  spinFans(true);
+
+  screenEl.className = 'screen off boot';
+  screenEl.textContent = 'Iniciando...';
+  log('⚡ Fuente estable. CPU responde. Arrancando sistema...', 'ok');
+
+  setTimeout(() => {
+    screenEl.textContent = 'Cargando componentes...\n' + buildSummaryLine();
+  }, 700);
+
+  setTimeout(() => {
+    finishBootAndScore();
+  }, 1700);
+}
+
+function buildSummaryLine(){
+  const extras = ['gpu','ssd','cooler'].filter(k=>state.installed[k]).length;
+  return `Módulos opcionales detectados: ${extras}/3`;
+}
+
+function spinFans(on){
+  document.querySelectorAll('.slot-icon').forEach(el=>{});
+  const coolerSlot = document.getElementById('cooler-slot');
+  if(coolerSlot){
+    const icon = coolerSlot.querySelector('.slot-icon');
+    if(icon) icon.classList.toggle('spinning', on && state.installed.cooler);
+  }
+}
+
+function finishBootAndScore(){
+  const score = computeScore();
+  const perfect = Object.values(state.installed).every(Boolean);
+
+  screenEl.className = 'screen off';
+  screenEl.textContent = `PC LISTA ✅\nRendimiento: ${score.total}/100`;
+  log(`✅ Arranque exitoso. Puntaje final: ${score.total}/100`, 'ok');
+
+  document.getElementById('p-compat').textContent = score.compat + '%';
+  document.getElementById('fill-compat').style.width = score.compat + '%';
+
+  if(perfect && !state.perfectBuildShown){
+    state.perfectBuildShown = true;
+    triggerEasterEgg();
+  } else {
+    showScoreModal(score);
+  }
+}
+
+/* easter egg: BSOD azul RGB parpadeante de celebración */
+function triggerEasterEgg(){
+  sfxSuccess();
+  screenEl.className = 'screen bsod';
+  screenEl.textContent = '¡BUILD PERFECTO! 🎉\nTodas las piezas instaladas correctamente.';
+  log('🌈 EASTER EGG desbloqueado: ¡Build 100% completo!', 'ok');
+  setTimeout(()=>{
+    showScoreModal(computeScore());
+  }, 2200);
+}
+
+function turnOff(){
+  state.poweredOn = false;
+  powerBtn.classList.remove('on');
+  ledStrip.classList.remove('on');
+  document.getElementById('tower').classList.remove('rgb-mode');
+  stopFanHum();
+  spinFans(false);
+  screenEl.className = 'screen off';
+  screenEl.textContent = 'Apagado.';
+  log('🔻 Sistema apagado.', 'warn');
+}
+
+/* ---------------------------------------------------------------
+   11. SCORE
+   --------------------------------------------------------------- */
+function computeScore(){
+  const has = state.installed;
+  const essential = has.cpu && (has.ram1||has.ram2) && has.psu;
+  let base = essential ? 60 : 0;
+  if(has.ram1 && has.ram2) base += 10;
+  if(has.gpu) base += 15;
+  if(has.ssd) base += 10;
+  if(has.cooler) base += 5;
+  const total = Math.min(100, base);
+  const installedCount = Object.values(has).filter(Boolean).length;
+  const compat = Math.round((installedCount/7)*100);
+  return { total, compat };
+}
+
+function showScoreModal(score){
+  const overlay = document.getElementById('score-overlay');
+  document.getElementById('score-number').textContent = score.total;
+  const has = state.installed;
+  let detail = `Compatibilidad de componentes: <b style="color:var(--accent)">${score.compat}%</b><br>`;
+  detail += has.gpu ? '🎮 GPU instalada: +15 rendimiento gráfico<br>' : '🎮 Sin GPU: gráficos básicos únicamente<br>';
+  detail += has.ssd ? '💾 SSD instalado: arranque ultra rápido<br>' : '💾 Sin SSD: la PC cargará más lento<br>';
+  detail += has.cooler ? '🌀 Cooler instalado: temperaturas bajo control' : '🌀 Sin cooler: riesgo de sobrecalentamiento';
+  document.getElementById('score-detail').innerHTML = detail;
+  overlay.classList.remove('hidden');
+}
+document.getElementById('btn-close-score').addEventListener('click', ()=>{
+  document.getElementById('score-overlay').classList.add('hidden');
+});
+
+/* ---------------------------------------------------------------
+   12. RGB MODE / RESET
+   --------------------------------------------------------------- */
+const rgbColors = ['#00ff88','#00c8ff','#ff2f6e','#c400ff','#ffb020'];
+let rgbIdx = 0;
+document.getElementById('btn-rgb').addEventListener('click', ()=>{
+  state.rgbMode = !state.rgbMode;
+  const tower = document.getElementById('tower');
+  tower.classList.toggle('rgb-mode', state.rgbMode);
+  if(state.rgbMode){
+    rgbIdx = (rgbIdx+1) % rgbColors.length;
+    document.documentElement.style.setProperty('--accent', rgbColors[rgbIdx]);
+    log('🌈 Modo RGB activado.', 'ok');
+  } else {
+    document.documentElement.style.setProperty('--accent', '#00ff88');
+    log('Modo RGB desactivado.', '');
+  }
+});
+
+document.getElementById('btn-reset').addEventListener('click', ()=>{
+  Object.keys(state.installed).forEach(k=> state.installed[k]=false);
+  state.poweredOn = false;
+  state.perfectBuildShown = false;
+  turnOff();
+  renderTray();
+  renderSlots();
+  updateProgress();
+  document.getElementById('p-compat').textContent = '--';
+  document.getElementById('fill-compat').style.width = '0%';
+  document.getElementById('console-log').innerHTML = '';
+  log('🔄 Simulador reiniciado. ¡Arma tu PC de nuevo!', 'ok');
+});
+
+/* ---------------------------------------------------------------
+   13. TUTORIAL INTERACTIVO
+   --------------------------------------------------------------- */
+const tutorialOverlay = document.getElementById('tutorial-overlay');
+const tutorialText = document.getElementById('tutorial-text');
+const tutorialDots = document.getElementById('tutorial-dots');
+
+function renderTutorialDots(){
+  tutorialDots.innerHTML = '';
+  TUTORIAL_STEPS.forEach((_, i)=>{
+    const d = document.createElement('div');
+    d.className = 'tut-dot' + (i===state.tutorialStep ? ' active' : '');
+    tutorialDots.appendChild(d);
+  });
+}
+
+function showTutorialStep(){
+  clearSpotlights();
+  const step = TUTORIAL_STEPS[state.tutorialStep];
+  tutorialText.innerHTML = step.text;
+  renderTutorialDots();
+  if(step.target){
+    const el = document.getElementById(step.target);
+    if(el) el.classList.add('spotlight-target');
+  }
+  document.getElementById('btn-next').textContent = state.tutorialStep === TUTORIAL_STEPS.length-1 ? 'Empezar 🚀' : 'Siguiente →';
+}
+
+function clearSpotlights(){
+  document.querySelectorAll('.spotlight-target').forEach(el=> el.classList.remove('spotlight-target'));
+}
+function openTutorial(){
+  state.tutorialStep = 0;
+  tutorialOverlay.classList.remove('hidden');
+  showTutorialStep();
+}
+function closeTutorial(){
+  clearSpotlights();
+  tutorialOverlay.classList.add('hidden');
+}
+document.getElementById('btn-tutorial').addEventListener('click', openTutorial);
+document.getElementById('btn-skip').addEventListener('click', closeTutorial);
+document.getElementById('btn-next').addEventListener('click', ()=>{
+  if(state.tutorialStep < TUTORIAL_STEPS.length-1){
+    state.tutorialStep++;
+    showTutorialStep();
+  } else {
+    closeTutorial();
+  }
+});
+
+/* ---------------------------------------------------------------
+   14. PARTÍCULAS DE FONDO (canvas, sin librerías)
+   --------------------------------------------------------------- */
+(function particlesFX(){
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles;
+
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  function initParticles(){
+    const count = Math.min(70, Math.floor((W*H)/22000));
+    particles = Array.from({length:count}, ()=>({
+      x: Math.random()*W, y: Math.random()*H,
+      r: Math.random()*1.6+0.4,
+      vx:(Math.random()-0.5)*0.25, vy:(Math.random()-0.5)*0.25,
+      hue: Math.random()>0.5 ? '0,255,136' : '0,200,255',
+      a: Math.random()*0.5+0.1
+    }));
+  }
+  function tick(){
+    ctx.clearRect(0,0,W,H);
+    particles.forEach(p=>{
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0) p.x=W; if(p.x>W) p.x=0;
+      if(p.y<0) p.y=H; if(p.y>H) p.y=0;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(${p.hue},${p.a})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(tick);
+  }
+  window.addEventListener('resize', ()=>{ resize(); initParticles(); });
+  resize(); initParticles(); tick();
+})();/* ---------------------------------------------------------------
+   15. INIT
+   --------------------------------------------------------------- */
+function init(){
+  renderTray();
+  renderSlots();
+  updateProgress();
+  log('Sistema listo. Arrastra las piezas al gabinete para comenzar.', 'ok');
+  // auto-open tutorial for first-time feel
+  setTimeout(openTutorial, 400);
+}
+init();
+</script>
+</body>
+</html>
