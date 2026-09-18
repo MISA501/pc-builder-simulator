@@ -1,29 +1,52 @@
-from flask import Flask, render_template, request, redirect
-import smtplib
-from email.message import EmailMessage
+import os
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
-@app.route('/enviar-feedback', methods=['POST'])
-@app.route('/enviar-feedback', methods=['POST'])
-def enviar_feedback():
-    nombre = request.form.get('nombre')
-    reaccion = request.form.get('reaccion')
+# Página principal
+@app.route("/")
+def inicio():
+    return render_template("pc-builder-simulator.html")
 
-    # Configuración del correo (ejemplo usando Gmail)
-    msg = EmailMessage()
-    msg.set_content(f"Nuevo mensaje de: {nombre}\n\nReacción:\n{reaccion}")
-    msg['Subject'] = "¡Nueva reacción en tu Simulador Web!"
-    msg['From'] = "misaelchavez856@gmail.com"
-    msg['To'] = "misaelchavez856@gmail.com"
+# Rutas para cada juego/página
+@app.route("/bios")
+def bios():
+    return render_template("bios.html")
 
-    try:
-        # Nota: Necesitas una 'Contraseña de aplicación' de Google si usas Gmail
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login('tucorreo@gmail.com', 'tu_contraseña_de_aplicacion')
-            smtp.send_message(msg)
-    except Exception as e:
-        print(f"Error al enviar: {e}")
+@app.route("/juego-cable-match")
+def cable_match():
+    return render_template("juego-cable-match.html")
 
-    return redirect('/')
+@app.route("/juego-debug-hunter")
+def debug_hunter():
+    return render_template("juego-debug-hunter.html")
+
+@app.route("/juego-firewall-defense")
+def firewall_defense():
+    return render_template("juego-firewall-defense.html")
+
+@app.route("/juego-packet-runner")
+def packet_runner():
+    return render_template("juego-packet-runner.html")
+
+@app.route("/juego-ram-rush")
+def ram_rush():
+    return render_template("juego-ram-rush.html")
+
+@app.route("/linux_game")
+def linux_game():
+    return render_template("linux_game.html")
+
+@app.route("/macos_game")
+def macos_game():
+    return render_template("macos_game.html")
+
+@app.route("/pc-builder-pro-2d")
+def pc_builder_pro():
+    return render_template("pc-builder-pro-2d.html")
+
+if __name__ == "__main__":
+    puerto = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=puerto, debug=False)
+
 
