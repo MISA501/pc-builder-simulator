@@ -1,0 +1,36 @@
+/* Ajusta el selector según la clase o ID real de tu menú desplegable */
+.dropdown-menu, .games-dropdown-content, .topbar .dropdown {
+  position: absolute; /* O relative, según cómo esté estructurado */
+  z-index: 9999;
+}
+/* Contenedor o filas individuales de las barras de estado */
+.console-status-row, .progress-line {
+  padding: 8px 12px;       /* Espacio interior superior/inferior y laterales */
+  margin-bottom: 10px;     /* Separación clara entre cada línea de estado */
+}
+
+/* Ajustes específicos para las barras de progreso y sus textos internos */
+.progress-bar-container {
+  padding: 4px;            /* Espacio interno para que la barra no toque los bordes */
+  margin-top: 6px;
+}
+
+.console-text, .progress-label {
+  letter-spacing: 0.5px;   /* Mejora la legibilidad de la tipografía retro */
+  line-height: 1.4;
+}
+/* Estilos base y de interacción para los botones de la barra superior */
+.topbar button, .topbar .nav-btn {
+  background-color: transparent;
+  border: 1px solid #00ff66; /* Ajusta al tono verde exacto de tu paleta */
+  color: #00ff66;
+  padding: 6px 12px;
+  transition: all 0.25s ease-in-out; /* Transición fluida */
+}
+
+/* Efecto hover con brillo neón sutil */
+.topbar button:hover, .topbar .nav-btn:hover {
+  background-color: rgba(0, 255, 102, 0.15); /* Sutil fondo translúcido verde */
+  box-shadow: 0 0 10px rgba(0, 255, 102, 0.6), inset 0 0 5px rgba(0, 255, 102, 0.3);
+  cursor: pointer;
+}

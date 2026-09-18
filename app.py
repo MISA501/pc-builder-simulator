@@ -1,19 +1,29 @@
-from flask import Flask, render_template
-import subprocess
+from flask import Flask, render_template, request, redirect
+import smtplib
+from email.message import EmailMessage
 
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return render_template('pc-builder-simulator.html')
+@app.route('/enviar-feedback', methods=['POST'])
+@app.route('/enviar-feedback', methods=['POST'])
+def enviar_feedback():
+    nombre = request.form.get('nombre')
+    reaccion = request.form.get('reaccion')
 
-@app.route('/jugar')
-def jugar():
-    # Aquí decides qué hacer al presionar "Jugar 2D"
-    # Ejemplo: correr tu main.py
-    subprocess.run(['python', 'main.py'])
-    return "El juego se está ejecutando en el servidor."
+    # Configuración del correo (ejemplo usando Gmail)
+    msg = EmailMessage()
+    msg.set_content(f"Nuevo mensaje de: {nombre}\n\nReacción:\n{reaccion}")
+    msg['Subject'] = "¡Nueva reacción en tu Simulador Web!"
+    msg['From'] = "misaelchavez856@gmail.com"
+    msg['To'] = "misaelchavez856@gmail.com"
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    try:
+        # Nota: Necesitas una 'Contraseña de aplicación' de Google si usas Gmail
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login('tucorreo@gmail.com', 'tu_contraseña_de_aplicacion')
+            smtp.send_message(msg)
+    except Exception as e:
+        print(f"Error al enviar: {e}")
+
+    return redirect('/')
 

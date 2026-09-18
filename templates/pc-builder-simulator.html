@@ -2,6 +2,13 @@
 
 <html lang="es">
 <head>
+<form action="/enviar-feedback" method="POST">
+    <input type="text" name="nombre" placeholder="Tu nombre / Nick">
+    <textarea name="reaccion" placeholder="¿Qué te pareció el sitio?"></textarea>
+    <button type="submit">[ ENVIAR FEEDBACK ]</button>
+    <form action="/guardar-comentario" method="POST"></form>
+</form>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BUILD://MASTER — Simulador de Ensamblaje PC</title>
@@ -9,6 +16,7 @@
 /* ============================================================
    DESIGN TOKENS — paleta estilo Razer/Corsair
    ============================================================ */
+   
 :root{
   --bg-void:#05060a;
   --bg-panel:#0d1016;
@@ -149,6 +157,7 @@ canvas#particles{
   border:1px solid var(--border-soft);
   border-radius:var(--radius-md);
   cursor:grab;
+  touch-action:none;
   transition:transform .18s ease, box-shadow .25s ease, border-color .2s ease, opacity .3s ease;
   user-select:none;
 }
@@ -165,10 +174,11 @@ canvas#particles{
 .part-icon{
   width:46px; height:46px; flex:0 0 auto;
   display:flex; align-items:center; justify-content:center;
-  font-size:24px; border-radius:10px;
+  font-size:24px; border-radius:10px; padding:6px;
   background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.08), transparent 60%), #0a0e14;
   border:1px solid rgba(255,255,255,0.06);
 }
+.part-icon svg{ width:100%; height:100%; display:block; }
 .part-info{ min-width:0; }
 .part-name{ font-weight:700; font-size:14px; line-height:1.2; }
 .part-sub{ font-size:11.5px; color:var(--text-lo); }
@@ -225,48 +235,39 @@ canvas#particles{
   100%{ box-shadow:0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(255,0,80,0.35); }
 }
 
-.mobo-grid{
-  display:grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto auto auto;
-  gap:12px;
-  grid-template-areas:
-    "cpu cpu cooler ram1"
-    "gpu gpu gpu ram2"
-    "ssd psu psu psu";
-  padding:16px;
-  border-radius:18px;
-  background:
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 24px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 24px),
-    linear-gradient(160deg,#0b1620,#081019);
-  border:1px solid rgba(0,255,136,0.12);
+.board-wrap{
+  position:relative; width:100%; aspect-ratio:800/560; border-radius:16px; overflow:hidden;
+  background:#03140c; border:1px solid rgba(0,255,136,0.14);
+  box-shadow:inset 0 0 40px rgba(0,0,0,0.6);
 }
+.board-svg{ position:absolute; inset:0; width:100%; height:100%; }
+.board-slots{ position:absolute; inset:0; }
+.bus-trace{ stroke-dasharray:7 5; animation:busFlow 2.6s linear infinite; }
+@keyframes busFlow{ to{ stroke-dashoffset:-48; } }
 
 .slot{
-  position:relative;
-  border-radius:12px;
-  border:1.5px dashed rgba(255,255,255,0.14);
-  background:rgba(255,255,255,0.02);
+  position:absolute;
+  border-radius:8px;
+  border:2px dashed rgba(255,255,255,0.22);
+  background:rgba(0,0,0,0.18);
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:6px; padding:12px 8px; min-height:78px;
+  gap:4px; padding:4px;
   transition: box-shadow .2s ease, border-color .2s ease, background .2s ease, transform .12s ease;
 }
-.slot .slot-label{ font-size:10.5px; letter-spacing:1px; color:var(--text-lo); text-transform:uppercase; font-weight:700;}
-.slot .slot-icon{ font-size:22px; opacity:0.35; }
-.slot.cpu-slot{ grid-area:cpu; }
-.slot.cooler-slot{ grid-area:cooler; }
-.slot.ram1-slot{ grid-area:ram1; }
-.slot.ram2-slot{ grid-area:ram2; }
-.slot.gpu-slot{ grid-area:gpu; min-height:70px; }
-.slot.ssd-slot{ grid-area:ssd; }
-.slot.psu-slot{ grid-area:psu; }
+.slot .slot-label{
+  position:absolute; top:-10px; left:6px; font-size:9px; letter-spacing:1px; color:var(--text-lo);
+  background:#05070a; padding:1px 6px; border-radius:4px; text-transform:uppercase; font-weight:700;
+  border:1px solid rgba(255,255,255,0.08);
+}
+.slot .slot-icon{ width:60%; height:60%; opacity:0.35; }
+.slot .slot-icon svg{ width:100%; height:100%; display:block; }
 
 .slot.drag-over{
   border-color:var(--accent);
   background:rgba(0,255,136,0.08);
   box-shadow:0 0 22px var(--neon-dim);
-  transform:scale(1.03);
+  transform:scale(1.04);
+  z-index:5;
 }
 .slot.filled{
   border-style:solid; border-color:var(--accent);
@@ -462,6 +463,177 @@ canvas#particles{
 .score-big{ font-family:var(--font-display); font-size:56px; font-weight:700; color:var(--neon); text-shadow:0 0 24px var(--neon-dim); margin:10px 0; }
 .score-tag{ font-size:13px; letter-spacing:2px; color:var(--text-lo); text-transform:uppercase; }
 
+/* ============================================================
+   ARRANQUE DE SO A PANTALLA COMPLETA — "como abrir una laptop real"
+   ============================================================ */
+#os-boot-overlay{
+  position:fixed; inset:0; z-index:400; background:#000;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+  font-family:'Segoe UI','Consolas',sans-serif;
+}
+#os-boot-overlay.hidden{ display:none; }
+
+/* --- etapa de carga (spinner) --- */
+.osb-loading{ display:flex; flex-direction:column; align-items:center; gap:22px; color:#fff; }
+.osb-spinner{ width:46px; height:46px; border-radius:50%; border:3px solid rgba(255,255,255,0.15); border-top-color:#fff; animation:osbSpin .9s linear infinite; }
+@keyframes osbSpin{ to{ transform:rotate(360deg); } }
+.osb-loading .osb-label{ font-size:14px; letter-spacing:1px; opacity:0.85; }
+.osb-progress-track{ width:220px; height:4px; border-radius:4px; background:rgba(255,255,255,0.15); overflow:hidden; }
+.osb-progress-fill{ height:100%; width:0%; background:#fff; border-radius:4px; transition:width 1.8s linear; }
+
+/* --- arranque real de WINDOWS: puntos orbitando, pantalla negra --- */
+#os-boot-overlay.osb-boot-windows{ background:#000; }
+.osb-win-dots{ position:relative; width:60px; height:60px; }
+.osb-win-dots span{ position:absolute; width:8px; height:8px; border-radius:50%; background:#fff; opacity:0.25; animation:winDotPulse 1.1s ease-in-out infinite; }
+.osb-win-dots span:nth-child(1){ left:52px; top:26px; animation-delay:0s; }
+.osb-win-dots span:nth-child(2){ left:38px; top:52px; animation-delay:.13s; }
+.osb-win-dots span:nth-child(3){ left:9px; top:42px; animation-delay:.26s; }
+.osb-win-dots span:nth-child(4){ left:9px; top:14px; animation-delay:.39s; }
+.osb-win-dots span:nth-child(5){ left:38px; top:4px; animation-delay:.52s; }
+@keyframes winDotPulse{ 0%,100%{ opacity:0.2; transform:scale(0.8); } 50%{ opacity:1; transform:scale(1.15); } }
+
+/* --- arranque real de LINUX: boot log tipo systemd, línea por línea --- */
+#os-boot-overlay.osb-boot-linux{ background:#000; align-items:flex-start; justify-content:flex-start; padding:40px; }
+.osb-linux-boot{ width:min(92%,640px); font-family:'Consolas','Courier New',monospace; font-size:12.5px; color:#c9d1d9; line-height:1.9; }
+.osb-boot-line{ opacity:0; animation:osbLineIn .18s ease forwards; }
+.osb-boot-line::before{ content:''; }
+@keyframes osbLineIn{ to{ opacity:1; } }
+
+/* --- arranque real de MACOS: glyph abstracto + barra de progreso gris --- */
+#os-boot-overlay.osb-boot-mac{ background:#f4f4f6; }
+.osb-loading-mac{ color:#1c1c1e; }
+.osb-mac-glyph{ width:64px; height:64px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #6e6e73, #1c1c1e); box-shadow:0 10px 30px rgba(0,0,0,0.25); animation:macPulse 1.6s ease-in-out infinite; }
+@keyframes macPulse{ 0%,100%{ opacity:0.55; } 50%{ opacity:1; } }
+.osb-mac-track{ width:180px; margin-top:26px; background:rgba(0,0,0,0.12); }
+
+/* --- escritorio genérico --- */
+.osb-desktop{ position:absolute; inset:0; display:flex; flex-direction:column; opacity:0; animation:osbFadeIn .6s ease forwards; }
+@keyframes osbFadeIn{ to{ opacity:1; } }
+.osb-desktop-icons{ position:absolute; display:flex; flex-direction:column; gap:16px; }
+.osb-icon{ display:flex; flex-direction:column; align-items:center; gap:4px; width:74px; text-align:center; }
+.osb-icon .osb-icon-glyph{ width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:19px; }
+.osb-icon .osb-icon-label{ font-size:11px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.7); }
+
+/* --- WINDOWS --- */
+.osb-windows .osb-wallpaper{ position:absolute; inset:0; background:linear-gradient(150deg,#0a3d62 0%,#0c2461 45%,#1b1464 100%); }
+.osb-windows .osb-wallpaper::after{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 75% 80%, rgba(0,255,200,0.18), transparent 60%); }
+.osb-windows .osb-desktop-icons{ top:24px; left:24px; }
+.osb-windows .osb-icon-glyph{ background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); }
+.osb-taskbar{
+  position:absolute; left:0; right:0; bottom:0; height:48px;
+  background:rgba(12,16,22,0.85); backdrop-filter:blur(10px);
+  display:flex; align-items:center; padding:0 10px; gap:10px; border-top:1px solid rgba(255,255,255,0.06);
+}
+.osb-start{
+  width:34px; height:34px; border-radius:6px; display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:7px;
+  background:rgba(255,255,255,0.06); cursor:default;
+}
+.osb-start span{ background:#00c8ff; border-radius:2px; }
+.osb-searchbar{
+  flex:0 0 auto; height:30px; min-width:220px; border-radius:15px; background:rgba(255,255,255,0.08);
+  display:flex; align-items:center; gap:8px; padding:0 14px; color:rgba(255,255,255,0.6); font-size:12px;
+}
+.osb-taskbar-apps{ display:flex; gap:8px; margin-left:6px; }
+.osb-taskbar-apps span{ width:22px; height:22px; border-radius:5px; display:inline-block; }
+.osb-tray{ margin-left:auto; display:flex; align-items:center; gap:12px; color:#dfe6ec; font-size:12px; }
+.osb-tray .osb-clock{ text-align:right; line-height:1.25; }
+.osb-tray .osb-clock small{ display:block; font-size:9.5px; opacity:0.6; }
+
+/* --- LINUX --- */
+.osb-linux .osb-wallpaper{ position:absolute; inset:0; background:linear-gradient(160deg,#1a1206 0%,#241a0a 55%,#120c04 100%); }
+.osb-linux .osb-wallpaper::after{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 25% 20%, rgba(255,176,32,0.15), transparent 55%); }
+.osb-linux .osb-topbar{
+  height:28px; background:rgba(10,10,10,0.75); display:flex; align-items:center; justify-content:space-between;
+  padding:0 12px; font-size:12px; color:#e8e8e8; border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.osb-linux .osb-dock{
+  position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:10px; padding:10px 7px; border-radius:14px;
+  background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08);
+}
+.osb-linux .osb-dock span{ width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:13px; }
+.osb-linux .osb-desktop-icons{ top:20px; right:20px; align-items:flex-end; }
+.osb-linux .osb-icon-glyph{ background:rgba(255,255,255,0.06); border:1px solid rgba(255,176,32,0.25); }
+.osb-terminal{
+  position:absolute; left:52%; top:50%; transform:translate(-50%,-50%);
+  width:min(78%, 420px); background:rgba(6,6,6,0.92); border:1px solid #ffb020; border-radius:8px;
+  box-shadow:0 20px 50px rgba(0,0,0,0.6); overflow:hidden;
+}
+.osb-terminal-bar{ background:#1a1a1a; padding:6px 10px; display:flex; gap:6px; }
+.osb-terminal-bar span{ width:10px; height:10px; border-radius:50%; }
+.osb-terminal-body{ padding:12px 14px; font-family:'Consolas',monospace; font-size:11.5px; color:#8dfcb0; line-height:1.7; white-space:pre-wrap; }
+.osb-terminal-body .prompt{ color:#ffb020; }
+.osb-cursor{ display:inline-block; width:7px; height:13px; background:#8dfcb0; animation:osbBlink 1s step-end infinite; vertical-align:middle; }
+@keyframes osbBlink{ 50%{ opacity:0; } }
+
+/* --- MACOS --- */
+.osb-mac .osb-wallpaper{ position:absolute; inset:0; background:linear-gradient(155deg,#ff7a59 0%,#c14fd0 45%,#4b6fff 100%); }
+.osb-mac .osb-menubar{
+  height:26px; background:rgba(255,255,255,0.35); backdrop-filter:blur(14px);
+  display:flex; align-items:center; justify-content:space-between; padding:0 14px;
+  font-size:11.5px; color:#1c1c1e; font-weight:600;
+}
+.osb-mac .osb-menubar .osb-menu-left{ display:flex; gap:16px; align-items:center; }
+.osb-mac .osb-menubar .osb-menu-right{ display:flex; gap:12px; align-items:center; font-weight:500; }
+.osb-mac .osb-dot-logo{ width:14px; height:14px; border-radius:50%; background:#1c1c1e; }
+.osb-mac .osb-desktop-icons{ top:38px; right:20px; align-items:flex-end; }
+.osb-mac .osb-icon-glyph{ background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.4); }
+.osb-mac .osb-dock-wrap{ position:absolute; left:0; right:0; bottom:10px; display:flex; justify-content:center; }
+.osb-mac .osb-dock{
+  display:flex; gap:10px; padding:8px 12px; border-radius:20px;
+  background:rgba(255,255,255,0.22); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.35);
+  box-shadow:0 10px 30px rgba(0,0,0,0.25);
+}
+.osb-mac .osb-dock span{
+  width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; box-shadow:0 4px 10px rgba(0,0,0,0.25); transition:transform .15s ease;
+}
+.osb-mac .osb-dock span:nth-child(3){ transform:scale(1.18) translateY(-4px); }
+
+.osb-caption{
+  position:absolute; left:50%; bottom:16px; transform:translateX(-50%);
+  font-size:11px; color:rgba(255,255,255,0.8); background:rgba(0,0,0,0.4);
+  padding:5px 12px; border-radius:20px; letter-spacing:0.5px; backdrop-filter:blur(6px);
+}
+
+#maintenance-overlay{
+  position:fixed; inset:0; z-index:230;
+  background:rgba(3,5,8,0.85); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#maintenance-overlay.hidden{ display:none; }
+.maint-list{ display:flex; flex-direction:column; gap:10px; }
+.maint-item{ display:flex; gap:12px; padding:10px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
+.maint-item .maint-ico{ font-size:20px; flex:0 0 auto; width:28px; text-align:center; }
+.maint-item b{ font-size:13px; color:var(--text-hi); }
+.maint-item span{ font-size:12px; color:var(--text-lo); line-height:1.5; }
+
+/* ============ MENÚ "MÁS JUEGOS" ============ */
+.games-menu-wrap{ position:relative; display:inline-block; }
+.games-menu{
+  position:absolute; right:0; top:calc(100% + 8px);
+  background:linear-gradient(160deg,#151b26,#0b0f16);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-md);
+  padding:8px; min-width:220px; max-width:80vw;
+  box-shadow:0 20px 45px rgba(0,0,0,0.55), 0 0 20px var(--neon-dim);
+  z-index:120; display:flex; flex-direction:column; gap:2px;
+  opacity:0; transform:translateY(-6px) scale(0.97); pointer-events:none;
+  transition:opacity .18s ease, transform .18s ease;
+}
+.games-menu.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+.games-menu.hidden{ display:none; }
+.games-menu a{
+  display:flex; align-items:center; gap:8px; color:var(--text-hi); text-decoration:none;
+  font-size:13px; font-weight:600; padding:9px 10px; border-radius:8px;
+  transition:background .15s ease, transform .15s ease, color .15s ease;
+}
+.games-menu a:hover{ background:rgba(0,255,136,0.1); color:var(--accent); transform:translateX(2px); }
+.games-menu-sep{ height:1px; background:var(--border-soft); margin:6px 2px; }
+@media (max-width:640px){
+  .games-menu{ right:auto; left:0; max-width:calc(100vw - 40px); }
+}
+
 /* toast for hint */
 #hint-toast{
   position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
@@ -474,36 +646,195 @@ canvas#particles{
 
 .spotlight-target{ position:relative; z-index:201 !important; box-shadow:0 0 0 6px rgba(0,255,136,0.25), 0 0 40px var(--neon) !important; }
 
+/* ============ WIDGET: CALIFICAR EL SITIO ============ */
+#rate-widget{
+  position:fixed; right:20px; bottom:20px; z-index:300;
+  background:linear-gradient(160deg,#151b26,#0b0f16);
+  border:1px solid var(--border-soft);
+  border-radius:var(--radius-md);
+  padding:12px 14px;
+  box-shadow:0 12px 30px rgba(0,0,0,0.5), 0 0 20px var(--neon-dim);
+  font-family:var(--font-body), sans-serif;
+  max-width:240px;
+  transition:opacity .25s ease, transform .25s ease;
+}
+#rate-widget.collapsed .rate-body{ display:none; }
+#rate-widget .rate-head{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; cursor:pointer;
+}
+#rate-widget .rate-title{
+  font-size:12px; font-weight:700; letter-spacing:0.5px; color:var(--text-hi);
+  display:flex; align-items:center; gap:6px;
+}
+#rate-widget .rate-toggle{
+  background:none; border:none; color:var(--text-lo); font-size:14px; cursor:pointer;
+  line-height:1; padding:2px;
+}
+#rate-widget .rate-body{ margin-top:10px; }
+#rate-widget .rate-emojis{ display:flex; gap:8px; justify-content:space-between; }
+.rate-emoji-btn{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;
+  background:rgba(255,255,255,0.03);
+  border:1px solid var(--border-soft);
+  border-radius:8px;
+  padding:8px 4px;
+  cursor:pointer;
+  font-size:22px;
+  color:var(--text-lo);
+  transition:transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.rate-emoji-btn span.rate-label{ font-size:9.5px; font-weight:700; letter-spacing:0.3px; text-transform:uppercase; }
+.rate-emoji-btn:hover{ transform:translateY(-2px); border-color:var(--accent); box-shadow:0 0 14px var(--neon-dim); }
+.rate-emoji-btn.selected{
+  border-color:var(--accent); background:rgba(0,255,136,0.08);
+  box-shadow:0 0 16px var(--neon-dim);
+  color:var(--text-hi);
+}
+#rate-widget .rate-thanks{
+  margin-top:10px; font-size:11.5px; color:var(--text-lo); line-height:1.4;
+  display:none;
+}
+#rate-widget .rate-thanks.show{ display:block; }
+@media (max-width:640px){
+  #rate-widget{ right:12px; bottom:12px; max-width:200px; padding:10px 12px; }
+  .rate-emoji-btn{ font-size:18px; padding:6px 3px; }
+}
+
 @media (max-width:640px){
   .brand span{ display:none; }
   .topbar{ flex-wrap:wrap; gap:10px; }
+  .topbar-actions{ width:100%; justify-content:flex-start; }
   .score-big{ font-size:42px; }
+  .app{ padding:12px 10px 40px; }
+  .panel{ padding:14px; }
+  .part-card{ padding:10px; gap:10px; }
+  .part-icon{ width:44px; height:44px; }
+  .part-name{ font-size:13px; }
+  .part-sub{ font-size:11px; }
+  .screen-frame{ height:150px; }
+  .screen{ font-size:11.5px; padding:10px; }
+  .os-choice-buttons button{ font-size:10.5px; padding:6px 9px; }
+  .power-btn{ width:52px; height:52px; font-size:20px; }
+  .tutorial-card, .card{ padding:18px; max-height:78vh; }
+  .tutorial-text{ font-size:13.5px; }
+  #hint-toast{ font-size:12.5px; padding:10px 16px; }
+}
+
+@media (max-width:420px){
+  .brand{ font-size:14px; gap:8px; }
+  .brand-mark{ width:32px; height:32px; font-size:16px; }
+  .btn{ font-size:11.5px; padding:8px 12px; }
+  .stage{ gap:14px; }
+  .screen-frame{ height:130px; }
+  .board-wrap{ border-radius:12px; }
 }
 </style>
 </head>
 <body>
-<div class="topbar-actions">
-  <!-- Tus botones anteriores -->
-  <button class="btn" id="btn-tutorial">📘 Tutorial</button>
-  
-  <!-- NUEVO BOTÓN PARA MÁS JUEGOS -->
-<div style="position: relative; display: inline-block;">
-  <button class="btn" id="btn-mas-juegos">🎮 Más Juegos ▼</button>
-  
-  <!-- Menú oculto con la lista de tus juegos -->
-<div id="menu-juegos" class="hidden" style="position: absolute; right: 0; top: 110%; background: #0d1016; border: 1px solid rgba(255,255,255,0.08); padding: 8px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; min-width: 200px;">
-  <a href="../files/bios.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">BIOS</a>
-  <a href="../files/juego-cable-match.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Cable Match</a>
-  <a href="../files/juego-debug-hunter.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Debug Hunter</a>
-  <a href="../files/juego-firewall-defense.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Firewall Defense</a>
-  <a href="../files/juego-packet-runner.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Packet Runner</a>
-  <a href="../files/juego-ram-rush.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">RAM Rush</a>
-  <a href="../files/linux_game.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Linux Game</a>
-  <a href="../files/macos_game.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">Macos Game</a>
-  <a href="../files/pc-builder-pro-2d.html" style="display:block; color:#eef3f7; padding:8px; text-decoration:none; font-size:13px;">PC Builder Pro 2D</a>
-</div>
-</div>
 <canvas id="particles"></canvas>
+
+<!-- ============================================================
+     SPRITE SVG — piezas de hardware estilo "product render"
+     (formas e ilustraciones propias, sin logos de marcas reales)
+     ============================================================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <linearGradient id="gradMetal" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#dfe6ec"/><stop offset="45%" stop-color="#93a0ac"/><stop offset="100%" stop-color="#4c5661"/>
+  </linearGradient>
+  <linearGradient id="gradDark" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#232c38"/><stop offset="100%" stop-color="#0c1016"/>
+  </linearGradient>
+  <linearGradient id="gradGold" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#f5d67a"/><stop offset="100%" stop-color="#b8862f"/>
+  </linearGradient>
+  <linearGradient id="gradPcbGreen" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0f5132"/><stop offset="100%" stop-color="#073d24"/>
+  </linearGradient>
+  <linearGradient id="gradShroud" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2c333c"/><stop offset="100%" stop-color="#0b0e13"/>
+  </linearGradient>
+  <radialGradient id="gradChip" cx="35%" cy="30%" r="80%">
+    <stop offset="0%" stop-color="#3a4552"/><stop offset="100%" stop-color="#0c1016"/>
+  </radialGradient>
+
+  <!-- CPU -->
+  <symbol id="icon-cpu" viewBox="0 0 100 100">
+    <rect x="12" y="12" width="76" height="76" rx="6" fill="url(#gradMetal)" stroke="#232a33" stroke-width="1.5"/>
+    <rect x="26" y="26" width="48" height="48" rx="3" fill="url(#gradDark)"/>
+    <rect x="33" y="33" width="34" height="34" rx="2" fill="#0d1520" stroke="#00ff88" stroke-width="0.6" opacity="0.8"/>
+    <circle cx="20" cy="20" r="2.6" fill="url(#gradGold)"/>
+    <g stroke="url(#gradGold)" stroke-width="2.2">
+      <line x1="0" y1="22" x2="12" y2="22"/><line x1="0" y1="36" x2="12" y2="36"/><line x1="0" y1="50" x2="12" y2="50"/><line x1="0" y1="64" x2="12" y2="64"/><line x1="0" y1="78" x2="12" y2="78"/>
+      <line x1="88" y1="22" x2="100" y2="22"/><line x1="88" y1="36" x2="100" y2="36"/><line x1="88" y1="50" x2="100" y2="50"/><line x1="88" y1="64" x2="100" y2="64"/><line x1="88" y1="78" x2="100" y2="78"/>
+    </g>
+  </symbol>
+
+  <!-- COOLER -->
+  <symbol id="icon-cooler" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="47" fill="url(#gradShroud)" stroke="#05070a" stroke-width="2"/>
+    <circle cx="50" cy="50" r="39" fill="#0a0d12"/>
+    <g fill="#333d49">
+      <path d="M50 50 L50 14 A36 36 0 0 1 81 34 Z" opacity="0.9"/>
+      <path d="M50 50 L81 34 A36 36 0 0 1 81 66 Z" opacity="0.75"/>
+      <path d="M50 50 L81 66 A36 36 0 0 1 50 86 Z" opacity="0.9"/>
+      <path d="M50 50 L50 86 A36 36 0 0 1 19 66 Z" opacity="0.75"/>
+      <path d="M50 50 L19 66 A36 36 0 0 1 19 34 Z" opacity="0.9"/>
+      <path d="M50 50 L19 34 A36 36 0 0 1 50 14 Z" opacity="0.75"/>
+    </g>
+    <circle cx="50" cy="50" r="12" fill="url(#gradMetal)" stroke="#232a33" stroke-width="1"/>
+  </symbol>
+
+  <!-- RAM -->
+  <symbol id="icon-ram" viewBox="0 0 40 140">
+    <rect x="4" y="2" width="32" height="132" rx="3" fill="url(#gradPcbGreen)" stroke="#0a2a1a" stroke-width="1"/>
+    <g fill="#0c1016">
+      <rect x="9" y="12" width="22" height="20" rx="1"/><rect x="9" y="40" width="22" height="20" rx="1"/>
+      <rect x="9" y="68" width="22" height="20" rx="1"/><rect x="9" y="96" width="22" height="20" rx="1"/>
+    </g>
+    <g fill="url(#gradGold)">
+      <rect x="5" y="126" width="3" height="8"/><rect x="10" y="126" width="3" height="8"/><rect x="15" y="126" width="3" height="8"/>
+      <rect x="20" y="126" width="3" height="8"/><rect x="25" y="126" width="3" height="8"/><rect x="30" y="126" width="3" height="8"/>
+    </g>
+  </symbol>
+
+  <!-- GPU -->
+  <symbol id="icon-gpu" viewBox="0 0 220 70">
+    <rect x="0" y="0" width="220" height="58" rx="7" fill="url(#gradShroud)" stroke="#05070a" stroke-width="1.5"/>
+    <circle cx="55" cy="29" r="23" fill="#0a0d12"/><circle cx="150" cy="29" r="23" fill="#0a0d12"/>
+    <g fill="#333d49" opacity="0.85">
+      <path d="M55 29 L55 8 A21 21 0 0 1 74 22 Z"/><path d="M55 29 L74 22 A21 21 0 0 1 74 37 Z" opacity="0.7"/><path d="M55 29 L74 37 A21 21 0 0 1 55 50 Z"/>
+      <path d="M150 29 L150 8 A21 21 0 0 1 169 22 Z"/><path d="M150 29 L169 22 A21 21 0 0 1 169 37 Z" opacity="0.7"/><path d="M150 29 L169 37 A21 21 0 0 1 150 50 Z"/>
+    </g>
+    <rect x="0" y="60" width="220" height="6" rx="2" fill="url(#gradGold)" opacity="0.9"/>
+    <g fill="url(#gradGold)"><rect x="20" y="66" width="6" height="4"/><rect x="34" y="66" width="6" height="4"/><rect x="48" y="66" width="6" height="4"/><rect x="62" y="66" width="6" height="4"/><rect x="76" y="66" width="6" height="4"/></g>
+  </symbol>
+
+  <!-- SSD -->
+  <symbol id="icon-ssd" viewBox="0 0 160 40">
+    <rect x="0" y="6" width="160" height="24" rx="3" fill="#141a22" stroke="#2a323d" stroke-width="1"/>
+    <rect x="10" y="11" width="30" height="14" rx="1" fill="url(#gradChip)"/>
+    <rect x="48" y="11" width="60" height="14" rx="1" fill="url(#gradChip)"/>
+    <rect x="118" y="11" width="30" height="14" rx="1" fill="url(#gradChip)"/>
+    <g fill="url(#gradGold)">
+      <rect x="4" y="32" width="6" height="5"/><rect x="14" y="32" width="6" height="5"/><rect x="24" y="32" width="6" height="5"/>
+      <rect x="34" y="32" width="6" height="5"/><rect x="44" y="32" width="6" height="5"/><rect x="54" y="32" width="6" height="5"/>
+    </g>
+  </symbol>
+
+  <!-- PSU -->
+  <symbol id="icon-psu" viewBox="0 0 120 100">
+    <rect x="0" y="0" width="120" height="100" rx="7" fill="url(#gradShroud)" stroke="#05070a" stroke-width="1.5"/>
+    <circle cx="60" cy="46" r="30" fill="#0a0d12"/>
+    <g stroke="#333d49" stroke-width="2" fill="none" opacity="0.8">
+      <circle cx="60" cy="46" r="8"/><circle cx="60" cy="46" r="16"/><circle cx="60" cy="46" r="24"/>
+    </g>
+    <rect x="0" y="84" width="120" height="16" fill="#05070a"/>
+    <g fill="url(#gradGold)"><rect x="10" y="88" width="10" height="8" rx="1"/><rect x="30" y="88" width="10" height="8" rx="1"/><rect x="50" y="88" width="10" height="8" rx="1"/></g>
+  </symbol>
+</defs>
+</svg>
 
 <div class="app">
   <!-- ============ TOPBAR ============ -->
@@ -520,6 +851,29 @@ canvas#particles{
       <button class="btn" id="btn-glossary">📖 BIOS y SO</button>
       <button class="btn" id="btn-rgb">🌈 Modo RGB</button>
       <button class="btn" id="btn-reset">🔄 Reiniciar</button>
+      <div class="games-menu-wrap">
+        <button class="btn" id="btn-mas-juegos">🎮 Más Juegos ▾</button>
+        <div id="menu-juegos" class="games-menu hidden">
+          <a href="#" id="menu-item-mantenimiento">🛠️ Mantenimiento</a>
+          <div class="games-menu-sep"></div>
+          <a href="../files/pc-builder-pro-2d.html">🖥️ PC Builder Pro 2D</a>
+          <a href="../files/bios.html">🧾 BIOS</a>
+          <a href="../files/linux_game.html">🐧 Linux Game</a>
+          <a href="../files/macos_game.html">🍎 macOS Game</a>
+          <div class="games-menu-sep"></div>
+          <a href="../files/juego-ram-rush.html">🧠 RAM Rush</a>
+          <a href="../files/juego-firewall-defense.html">🛡️ Firewall Defense</a>
+          <a href="../files/juego-packet-runner.html">📡 Packet Runner</a>
+          <a href="../files/juego-debug-hunter.html">🐛 Debug Hunter</a>
+          <a href="../files/juego-cable-match.html">🔌 Cable Match</a>
+          <a href="../files/bios.html">🫟la bios </a>
+          <a href="../files/pc-builder-pro-2d.html">💾 armado </a>
+          <a href="../files/macos_game.html">🍎 Interfas mac</a>
+          <a href="../files/linux_game.html">🐧 Interfas linux</a>
+          <a href="../files/juego_bug_hunter.htm">🕵️ como viaja</a>
+
+        </div>
+      </div>
     </div>
   </div>
 
@@ -537,8 +891,94 @@ canvas#particles{
       <h2><span class="dot"></span>Gabinete</h2>
       <div class="case-wrap">
         <div class="tower" id="tower">
-          <div class="mobo-grid" id="mobo-grid">
-            <!-- slots injected by JS -->
+          <div class="board-wrap" id="board-wrap">
+            <svg class="board-svg" viewBox="0 0 800 560" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <linearGradient id="gradBoard" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#0a3d27"/><stop offset="55%" stop-color="#052d1c"/><stop offset="100%" stop-color="#031f13"/>
+                </linearGradient>
+                <linearGradient id="gradShroudBoard" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2c333c"/><stop offset="100%" stop-color="#0b0e13"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="800" height="560" fill="url(#gradBoard)"/>
+
+              <!-- tornillos: en las 4 esquinas, fuera del área de cualquier slot -->
+              <g fill="#1a1a1a" stroke="#3a3a3a" stroke-width="1">
+                <circle cx="15" cy="15" r="6"/><circle cx="785" cy="15" r="6"/><circle cx="15" cy="545" r="6"/><circle cx="785" cy="545" r="6"/>
+              </g>
+
+              <!-- ===== BANDA A (y 20-220): rear I/O · cooler · VRM · CPU · RAM · PSU ===== -->
+              <g>
+                <rect x="10" y="20" width="68" height="200" rx="4" fill="#05070a" stroke="#1c2229"><title>Panel trasero (Rear I/O): aquí van los puertos USB, red, audio y video que ves detrás de una PC real.</title></rect>
+                <rect x="18" y="30" width="52" height="14" rx="2" fill="#1c2733"/>
+                <rect x="18" y="50" width="52" height="14" rx="2" fill="#1c2733"/>
+                <rect x="18" y="70" width="23" height="14" rx="2" fill="#2a3f57"/>
+                <rect x="47" y="70" width="23" height="14" rx="2" fill="#2a3f57"/>
+                <rect x="18" y="90" width="52" height="10" rx="2" fill="#7a3a3a"/>
+                <rect x="18" y="106" width="52" height="10" rx="2" fill="#3a7a55"/>
+                <rect x="18" y="122" width="52" height="10" rx="2" fill="#3a5a7a"/>
+                <text x="44" y="205" fill="#3a6b52" font-family="monospace" font-size="9" text-anchor="middle">REAR I/O</text>
+              </g>
+              <!-- VRM: franja angosta entre el cooler y el CPU, sin tocar ninguno de los dos -->
+              <rect x="246" y="20" width="10" height="200" rx="3" fill="url(#gradShroudBoard)" stroke="#05070a">
+                <title>VRM: regula el voltaje que recibe el CPU para que funcione estable.</title>
+              </rect>
+
+              <!-- ===== CORREDOR (y 225-282): SOLO buses de datos, ningún slot ni pieza aquí ===== -->
+              <g fill="none" stroke="#00ff88" stroke-width="2.4" opacity="0.85">
+                <path class="bus-trace" d="M337,220 V250 H530 M480,250 V220 M530,250 V220">
+                  <title>Bus de memoria: conecta el CPU con la RAM para que intercambien datos a máxima velocidad.</title>
+                </path>
+              </g>
+              <g fill="none" stroke="#00c8ff" stroke-width="2.4" opacity="0.85">
+                <path class="bus-trace" d="M295,290 V220">
+                  <title>Bus PCIe x16: por aquí la tarjeta gráfica envía y recibe datos a máxima velocidad.</title>
+                </path>
+              </g>
+              <g fill="none" stroke="#ffb020" stroke-width="2.4" opacity="0.85">
+                <path class="bus-trace" d="M600,410 H545 V270 H280 V220">
+                  <title>Bus DMI: conecta el CPU con el chipset (que controla USB, SATA, etc).</title>
+                </path>
+              </g>
+              <text x="433" y="242" fill="#5fcbaa" font-family="monospace" font-size="9" text-anchor="middle">BUS DE MEMORIA</text>
+              <text x="230" y="255" fill="#5fb8cb" font-family="monospace" font-size="9" text-anchor="middle">BUS PCIe</text>
+              <text x="462" y="278" fill="#cb9a5f" font-family="monospace" font-size="9" text-anchor="middle">BUS DMI</text>
+
+              <!-- ===== BANDA B (y 290-360): GPU y SSD, con pasillo libre de 30px entre ambos ===== -->
+              <!-- (los slots de GPU y SSD los dibuja el JS; aquí no va nada decorativo para no cruzarlos) -->
+
+              <!-- ===== BANDA C (y 380-490): chipset ===== -->
+              <g>
+                <rect x="600" y="380" width="110" height="105" rx="8" fill="url(#gradShroudBoard)" stroke="#05070a" stroke-width="2">
+                  <title>Chipset: el "asistente" del CPU. Controla los puertos USB, SATA y la comunicación entre piezas.</title>
+                </rect>
+                <g stroke="#404b56" stroke-width="3">
+                  <line x1="612" y1="392" x2="612" y2="473"/><line x1="626" y1="392" x2="626" y2="473"/><line x1="640" y1="392" x2="640" y2="473"/>
+                  <line x1="654" y1="392" x2="654" y2="473"/><line x1="668" y1="392" x2="668" y2="473"/><line x1="682" y1="392" x2="682" y2="473"/><line x1="696" y1="392" x2="696" y2="473"/>
+                </g>
+                <text x="655" y="500" fill="#9fb4c8" font-family="monospace" font-size="9" text-anchor="middle">CHIPSET</text>
+              </g>
+
+              <!-- ===== BANDA D (y 495-520): puertos SATA, justo debajo del chipset ===== -->
+              <g>
+                <rect x="606" y="495" width="16" height="24" rx="2" fill="#111" stroke="#c9a227"><title>Puerto SATA: aquí se conecta un disco duro o una unidad óptica.</title></rect>
+                <rect x="628" y="495" width="16" height="24" rx="2" fill="#111" stroke="#c9a227"><title>Puerto SATA: aquí se conecta un disco duro o una unidad óptica.</title></rect>
+                <rect x="650" y="495" width="16" height="24" rx="2" fill="#111" stroke="#c9a227"><title>Puerto SATA: aquí se conecta un disco duro o una unidad óptica.</title></rect>
+                <rect x="672" y="495" width="16" height="24" rx="2" fill="#111" stroke="#c9a227"><title>Puerto SATA: aquí se conecta un disco duro o una unidad óptica.</title></rect>
+                <text x="647" y="533" fill="#3a6b52" font-family="monospace" font-size="9" text-anchor="middle">SATA x4</text>
+              </g>
+
+              <!-- pistas de cobre decorativas de fondo (solo estética, en zonas ya vacías) -->
+              <g stroke="#0f6a3f" stroke-width="1.2" opacity="0.35" fill="none">
+                <path d="M40 380 H 200 V 360"/><path d="M760 220 H 720 V 260"/>
+              </g>
+
+              <!-- silkscreen -->
+              <text x="400" y="548" fill="#3a6b52" font-family="monospace" font-size="12" text-anchor="middle" letter-spacing="2">BM • Z-CORE 790 MOTHERBOARD</text>
+            </svg>
+            <div class="board-slots" id="board-slots"><!-- slots inyectados por JS --></div>
+
           </div>
           <svg id="cable-layer" class="cable-layer"></svg>
           <div class="led-strip" id="led-strip"></div>
@@ -628,6 +1068,38 @@ canvas#particles{
   </div>
 </div>
 
+<!-- ============ MANTENIMIENTO PREVENTIVO Y CORRECTIVO ============ -->
+<div id="maintenance-overlay" class="hidden">
+  <div class="tutorial-card" style="max-width:640px; max-height:84vh; overflow-y:auto;">
+    <h3 style="font-family:var(--font-display); color:var(--accent); font-size:15px; letter-spacing:1px; margin:0 0 6px;">🛠️ MANTENIMIENTO DE UNA PC</h3>
+    <p style="font-size:13px; color:var(--text-lo); margin:0 0 18px; line-height:1.6;">Igual que un carro necesita servicio, una PC también necesita cuidados. Hay dos tipos: <b style="color:var(--accent)">preventivo</b> (evitar problemas) y <b style="color:var(--danger)">correctivo</b> (arreglar lo que ya falló).</p>
+
+    <h4 style="font-family:var(--font-display); font-size:12px; color:var(--neon); letter-spacing:1px; margin:0 0 10px; display:flex; align-items:center; gap:8px;">🧹 PREVENTIVO — evitar que algo se dañe</h4>
+    <div class="maint-list">
+      <div class="maint-item"><span class="maint-ico">🌬️</span><div><b>Limpiar el polvo</b><br><span>Cada 3-6 meses, con aire comprimido. El polvo tapa los ventiladores y sube la temperatura.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🧴</span><div><b>Cambiar la pasta térmica</b><br><span>Cada 1-2 años. Es la "crema" entre el CPU y el cooler que ayuda a transferir el calor.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🔄</span><div><b>Actualizar el sistema y los drivers</b><br><span>Corrige fallas de seguridad antes de que alguien las aproveche.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">💾</span><div><b>Hacer respaldos (backups)</b><br><span>Copiar tus archivos importantes a otro disco o la nube, por si el SSD falla.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🔌</span><div><b>Usar un regulador o UPS</b><br><span>Protege la fuente de poder de subidas de voltaje y apagones.</span></div></div>
+    </div>
+
+    <h4 style="font-family:var(--font-display); font-size:12px; color:var(--danger); letter-spacing:1px; margin:18px 0 10px; display:flex; align-items:center; gap:8px;">🔧 CORRECTIVO — arreglar lo que ya falló</h4>
+    <div class="maint-list">
+      <div class="maint-item"><span class="maint-ico">🦠</span><div><b>Quitar virus o malware</b><br><span>Con un antivirus, cuando el Sistema Operativo ya se infectó.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🔁</span><div><b>Reinstalar el Sistema Operativo</b><br><span>Cuando Windows/Linux/macOS ya no arranca bien o está muy dañado.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🧩</span><div><b>Reemplazar una pieza dañada</b><br><span>Por ejemplo, cambiar la RAM si hace "beep-beep" o la PSU si no da corriente.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🌡️</span><div><b>Corregir sobrecalentamiento</b><br><span>Revisar que el cooler esté bien puesto y girando si el CPU se calienta demasiado.</span></div></div>
+      <div class="maint-item"><span class="maint-ico">🔍</span><div><b>Diagnosticar con la BIOS</b><br><span>Si la PC no enciende, la BIOS (o sus pitidos de error) ayuda a saber qué pieza falla.</span></div></div>
+    </div>
+
+    <p style="font-size:12px; color:var(--text-lo); margin:16px 0 0; line-height:1.6;">💡 Regla simple: <b>preventivo</b> = lo haces antes para que no pase nada malo. <b>Correctivo</b> = lo haces después, cuando algo ya se rompió.</p>
+    <button class="btn primary" id="btn-close-maintenance" style="width:100%; justify-content:center; margin-top:16px;">Entendido</button>
+  </div>
+</div>
+
+<!-- ============ ARRANQUE DE SO A PANTALLA COMPLETA ============ -->
+<div id="os-boot-overlay" class="hidden"></div>
+
 <!-- hint toast -->
 <div id="hint-toast"></div>
 
@@ -642,37 +1114,37 @@ canvas#particles{
    --------------------------------------------------------------- */
 const PARTS = {
   cpu: {
-    id:'cpu', name:'Procesador (CPU)', icon:'🧠', slot:'cpu-slot',
+    id:'cpu', name:'Procesador (CPU)', icon:'icon-cpu', slot:'cpu-slot',
     sub:'El que piensa por todos',
     desc:'Es el <b>cerebro</b> de la PC. Toma decisiones y hace todos los cálculos, miles de millones por segundo. Sin él, la PC no sabe ni cómo prender.'
   },
   cooler: {
-    id:'cooler', name:'Disipador (Cooler)', icon:'🌀', slot:'cooler-slot',
+    id:'cooler', name:'Disipador (Cooler)', icon:'icon-cooler', slot:'cooler-slot',
     sub:'El aire acondicionado del cerebro',
     desc:'El cerebro (CPU) trabaja tan rápido que se calienta mucho. El cooler es como un <b>ventilador de techo</b> que lo mantiene fresco para que no se "queme" pensando.'
   },
   ram1: {
-    id:'ram1', name:'Memoria RAM #1', icon:'📏', slot:'ram1-slot',
+    id:'ram1', name:'Memoria RAM #1', icon:'icon-ram', slot:'ram1-slot',
     sub:'La mesa de trabajo',
     desc:'Es como una <b>mesa de trabajo</b>: mientras más grande, más cosas puedes tener abiertas a la vez sin estorbarte. Sin RAM, no hay espacio para trabajar.'
   },
   ram2: {
-    id:'ram2', name:'Memoria RAM #2', icon:'📏', slot:'ram2-slot',
+    id:'ram2', name:'Memoria RAM #2', icon:'icon-ram', slot:'ram2-slot',
     sub:'Refuerzo de la mesa de trabajo',
     desc:'Una segunda mesa junto a la primera. Dos mesas juntas (Dual Channel) hacen que muevas cosas de un lado a otro mucho más rápido.'
   },
   gpu: {
-    id:'gpu', name:'Tarjeta Gráfica (GPU)', icon:'🎮', slot:'gpu-slot',
+    id:'gpu', name:'Tarjeta Gráfica (GPU)', icon:'icon-gpu', slot:'gpu-slot',
     sub:'El artista que dibuja todo',
     desc:'Es el <b>pintor</b> de la PC: dibuja cada imagen, juego y video que ves en pantalla, miles de veces por segundo. Sin ella, los juegos se ven lentos o feos.'
   },
   ssd: {
-    id:'ssd', name:'Almacenamiento (SSD)', icon:'💾', slot:'ssd-slot',
+    id:'ssd', name:'Almacenamiento (SSD)', icon:'icon-ssd', slot:'ssd-slot',
     sub:'La bodega ultra rápida',
     desc:'Es la <b>bodega</b> donde se guardan tus fotos, juegos y archivos, incluso apagada. Un SSD es una bodega con montacargas: todo se guarda y se saca súper rápido.'
   },
   psu: {
-    id:'psu', name:'Fuente de Poder (PSU)', icon:'🔋', slot:'psu-slot',
+    id:'psu', name:'Fuente de Poder (PSU)', icon:'icon-psu', slot:'psu-slot',
     sub:'El corazón que da energía',
     desc:'Es el <b>corazón</b> de la PC: bombea electricidad a cada pieza. Sin fuente de poder, nada enciende, ni siquiera una luz.'
   }
@@ -790,6 +1262,12 @@ function stopFanHum(){
 /* ---------------------------------------------------------------
    4. RENDER: bandeja de piezas
    --------------------------------------------------------------- */
+const SYMBOL_VIEWBOX = { 'icon-cpu':'0 0 100 100', 'icon-cooler':'0 0 100 100', 'icon-ram':'0 0 40 140', 'icon-gpu':'0 0 220 70', 'icon-ssd':'0 0 160 40', 'icon-psu':'0 0 120 100' };
+function iconSvg(iconId){
+  const vb = SYMBOL_VIEWBOX[iconId] || '0 0 100 100';
+  return `<svg viewBox="${vb}"><use href="#${iconId}"></use></svg>`;
+}
+
 function renderTray(){
   const tray = document.getElementById('tray');
   tray.innerHTML = '';
@@ -800,7 +1278,7 @@ function renderTray(){
     card.draggable = !state.installed[id];
     card.id = 'card-' + id;
     card.innerHTML = `
-      <div class="part-icon">${p.icon}</div>
+      <div class="part-icon">${iconSvg(p.icon)}</div>
       <div class="part-info">
         <div class="part-name">${p.name}</div>
         <div class="part-sub">${p.sub}</div>
@@ -812,36 +1290,108 @@ function renderTray(){
       card.classList.add('dragging');
     });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    attachTouchDrag(card, id);
     tray.appendChild(card);
+  });
+}
+
+/* ---------------------------------------------------------------
+   4-b. DRAG & DROP TÁCTIL — la API nativa de HTML5 (dragstart/drop)
+   no responde a eventos táctiles, así que replicamos el arrastre
+   a mano para que funcione bien en celular/tablet.
+   --------------------------------------------------------------- */
+let touchDragState = null;
+
+function attachTouchDrag(card, partId){
+  card.addEventListener('touchstart', e => {
+    if(state.installed[partId]) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = card.getBoundingClientRect();
+    const clone = card.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.position = 'fixed';
+    clone.style.left = rect.left + 'px';
+    clone.style.top = rect.top + 'px';
+    clone.style.width = rect.width + 'px';
+    clone.style.zIndex = '9999';
+    clone.style.pointerEvents = 'none';
+    clone.style.opacity = '0.92';
+    clone.style.transform = 'scale(1.05) rotate(-2deg)';
+    clone.style.boxShadow = '0 20px 40px rgba(0,0,0,0.55)';
+    document.body.appendChild(clone);
+    card.classList.add('dragging');
+    touchDragState = { partId, clone, offsetX: touch.clientX-rect.left, offsetY: touch.clientY-rect.top, lastSlot:null };
+  }, {passive:false});
+
+  card.addEventListener('touchmove', e => {
+    if(!touchDragState || touchDragState.partId !== partId) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const { clone, offsetX, offsetY } = touchDragState;
+    clone.style.left = (touch.clientX-offsetX) + 'px';
+    clone.style.top = (touch.clientY-offsetY) + 'px';
+    clone.style.display = 'none';
+    const under = document.elementFromPoint(touch.clientX, touch.clientY);
+    clone.style.display = '';
+    const slotEl = under && under.closest ? under.closest('.slot') : null;
+    if(touchDragState.lastSlot && touchDragState.lastSlot !== slotEl){
+      touchDragState.lastSlot.classList.remove('drag-over');
+    }
+    if(slotEl && !slotEl.classList.contains('filled')) slotEl.classList.add('drag-over');
+    touchDragState.lastSlot = slotEl;
+  }, {passive:false});
+
+  card.addEventListener('touchend', () => {
+    if(!touchDragState || touchDragState.partId !== partId) return;
+    const { clone, lastSlot, partId: pid } = touchDragState;
+    if(lastSlot){
+      lastSlot.classList.remove('drag-over');
+      handleDrop(pid, lastSlot.dataset.accepts, lastSlot);
+    }
+    clone.remove();
+    card.classList.remove('dragging');
+    touchDragState = null;
   });
 }
 
 /* ---------------------------------------------------------------
    5. RENDER: slots del gabinete
    --------------------------------------------------------------- */
-const SLOT_DEFS = [
-  {slot:'cpu-slot', accepts:'cpu', label:'CPU', icon:'🧩'},
-  {slot:'cooler-slot', accepts:'cooler', label:'Cooler', icon:'🌀'},
-  {slot:'ram1-slot', accepts:'ram1', label:'RAM 1', icon:'📏'},
-  {slot:'ram2-slot', accepts:'ram2', label:'RAM 2', icon:'📏'},
-  {slot:'gpu-slot', accepts:'gpu', label:'GPU', icon:'🎮'},
-  {slot:'ssd-slot', accepts:'ssd', label:'SSD', icon:'💾'},
-  {slot:'psu-slot', accepts:'psu', label:'PSU', icon:'🔋'}
-];
+/* Layout en "bandas" horizontales para que nada se cruce:
+   Banda A (y 20-220): rear I/O, cooler, VRM, CPU, RAM, PSU
+   Corredor (y 225-282): SOLO buses de datos, ningún slot
+   Banda B (y 290-360): GPU y SSD, con un pasillo libre entre ambos
+   Banda C (y 380-490): chipset  |  Banda D (y 495-520): SATA */
+const SLOT_COORDS = {
+  'cooler-slot': {x:90,  y:20, w:150, h:200, label:'Cooler'},
+  'cpu-slot':    {x:262, y:20, w:150, h:200, label:'CPU (LGA)'},
+  'ram1-slot':   {x:460, y:20, w:40,  h:200, label:'RAM 1'},
+  'ram2-slot':   {x:510, y:20, w:40,  h:200, label:'RAM 2'},
+  'psu-slot':    {x:610, y:20, w:170, h:150, label:'Conector PSU (24-pin)'},
+  'gpu-slot':    {x:60,  y:290,w:470, h:66,  label:'GPU (PCIe x16)'},
+  'ssd-slot':    {x:560, y:290,w:180, h:40,  label:'SSD (M.2)'}
+};
+const SLOT_ACCEPTS = { 'cpu-slot':'cpu', 'cooler-slot':'cooler', 'ram1-slot':'ram1', 'ram2-slot':'ram2', 'gpu-slot':'gpu', 'ssd-slot':'ssd', 'psu-slot':'psu' };
 
 function renderSlots(){
-  const grid = document.getElementById('mobo-grid');
-  grid.innerHTML = '';
-  SLOT_DEFS.forEach(def => {
+  const wrap = document.getElementById('board-slots');
+  wrap.innerHTML = '';
+  Object.keys(SLOT_COORDS).forEach(slotId => {
+    const c = SLOT_COORDS[slotId];
+    const accepts = SLOT_ACCEPTS[slotId];
+    const filled = state.installed[accepts];
     const el = document.createElement('div');
-    el.className = 'slot ' + def.slot;
-    el.dataset.accepts = def.accepts;
-    el.id = def.slot;
-    const filled = state.installed[def.accepts];
-    if(filled) el.classList.add('filled');
+    el.className = 'slot' + (filled ? ' filled' : '');
+    el.id = slotId;
+    el.dataset.accepts = accepts;
+    el.style.left = (c.x/800*100) + '%';
+    el.style.top = (c.y/560*100) + '%';
+    el.style.width = (c.w/800*100) + '%';
+    el.style.height = (c.h/560*100) + '%';
     el.innerHTML = `
-      <div class="slot-icon">${filled ? PARTS[def.accepts].icon : def.icon}</div>
-      <div class="slot-label">${def.label}</div>
+      <div class="slot-label">${c.label}</div>
+      <div class="slot-icon">${iconSvg(PARTS[accepts].icon)}</div>
     `;
     el.addEventListener('dragover', e => { e.preventDefault(); if(!filled) el.classList.add('drag-over'); });
     el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
@@ -849,9 +1399,9 @@ function renderSlots(){
       e.preventDefault();
       el.classList.remove('drag-over');
       const droppedId = e.dataTransfer.getData('text/plain');
-      handleDrop(droppedId, def.accepts, el);
+      handleDrop(droppedId, accepts, el);
     });
-    grid.appendChild(el);
+    wrap.appendChild(el);
   });
   updateCables();
 }
@@ -906,14 +1456,26 @@ window.addEventListener('resize', ()=> requestAnimationFrame(updateCables));
 /* ---------------------------------------------------------------
    6. LÓGICA DE DROP + VALIDACIÓN
    --------------------------------------------------------------- */
+/* En una PC real, el cooler se atornilla ENCIMA del CPU, así que no
+   tiene sentido instalarlo si el CPU todavía no está en su socket. */
+const REQUISITOS_INSTALACION = { cooler: 'cpu' };
+
 function handleDrop(droppedId, expectedId, slotEl){
   if(state.installed[droppedId]) return; // ya instalada
   if(droppedId === expectedId){
+    const requisito = REQUISITOS_INSTALACION[droppedId];
+    if(requisito && !state.installed[requisito]){
+      sfxErrorShake();
+      slotEl.classList.add('error-shake');
+      setTimeout(()=> slotEl.classList.remove('error-shake'), 420);
+      log(`✖ Primero instala ${PARTS[requisito].name}: el ${PARTS[droppedId].name.toLowerCase()} va montado encima.`, 'err');
+      showHint(`🔧 En la vida real, el cooler se atornilla sobre el CPU — instala el CPU primero.`);
+      return;
+    }
     // correcto
     state.installed[droppedId] = true;
     sfxClickInstall();
     slotEl.classList.add('filled');
-    slotEl.querySelector('.slot-icon').textContent = PARTS[droppedId].icon;
     log(`✔ ${PARTS[droppedId].name} instalada correctamente.`, 'ok');
     renderTray();
     updateProgress();
@@ -1117,31 +1679,167 @@ document.getElementById('btn-continue-os').addEventListener('click', ()=>{
 function chooseOS(osKey){
   const os = OS_INFO[osKey];
   sfxClickInstall();
-  screenEl.className = 'screen off boot';
-  screenEl.textContent = `Iniciando ${os.name}...`;
   log(`🖥️ Elegiste iniciar ${os.name}.`, 'ok');
   log(`ℹ️ ${os.desc}`, '');
   log('🖥️ El Sistema Operativo es el "gerente" de la PC: organiza tus archivos, abre tus programas y le habla a cada pieza de hardware sin que tú tengas que saber cómo funciona por dentro.', '');
-  setTimeout(() => showOsDesktopMock(osKey), 900);
+  screenEl.className = 'screen off';
+  screenEl.textContent = `Iniciando ${os.name}...`;
+  playOsBootCinematic(osKey);
 }
 
-function showOsDesktopMock(osKey){
-  const os = OS_INFO[osKey];
-  let bar;
+/* ---------------------------------------------------------------
+   ARRANQUE DE SO A PANTALLA COMPLETA — recreación real de cómo se
+   ve abrir una laptop con Windows, Linux o macOS.
+   --------------------------------------------------------------- */
+let osbClockInterval = null;
+
+function playOsBootCinematic(osKey){
+  const overlay = document.getElementById('os-boot-overlay');
+  overlay.className = 'osb-boot-' + osKey; // quita "hidden": entra la pantalla de arranque real del SO
+
   if(osKey === 'windows'){
-    bar = `<div style="background:#0a1e2e;border-radius:6px;padding:7px 12px;display:flex;justify-content:space-between;align-items:center;width:100%;font-size:11px;"><span>⊞ Inicio</span><span style="opacity:0.7;">${os.tagline}</span></div>`;
+    overlay.innerHTML = `
+      <div class="osb-loading osb-loading-windows">
+        <div class="osb-win-dots">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>`;
   } else if(osKey === 'linux'){
-    bar = `<div style="background:#1a1206;border:1px solid #ffb020;border-radius:6px;padding:7px 12px;font-family:'Consolas',monospace;width:100%;font-size:11px;">user@buildmaster:~$ <span style="opacity:0.6;">_</span></div>`;
+    overlay.innerHTML = `
+      <div class="osb-linux-boot" id="osb-linux-boot"></div>`;
+    runLinuxBootLog();
   } else {
-    bar = `<div style="background:rgba(255,255,255,0.1);border-radius:20px;padding:7px 18px;display:inline-flex;gap:12px;font-size:14px;">🍎 📁 🌐 🎵</div>`;
+    overlay.innerHTML = `
+      <div class="osb-loading osb-loading-mac">
+        <div class="osb-mac-glyph"></div>
+        <div class="osb-progress-track osb-mac-track"><div class="osb-progress-fill" id="osb-fill" style="background:#555"></div></div>
+      </div>`;
+    requestAnimationFrame(()=>{ const f=document.getElementById('osb-fill'); if(f) f.style.width='100%'; });
   }
-  screenEl.className = 'screen off';
-  screenEl.innerHTML = `
-    <div style="width:100%; display:flex; flex-direction:column; align-items:center; gap:10px;">
-      <div style="font-size:12px;">Escritorio de <b style="color:${os.color}">${os.name}</b> listo ✅</div>
-      ${bar}
-    </div>`;
-  setTimeout(() => finishBootAndScore(osKey), 1200);
+
+  setTimeout(() => renderOsDesktopFull(osKey), 2200);
+}
+
+/* boot log estilo systemd/journalctl, línea por línea, muy reconocible en Linux real */
+const LINUX_BOOT_LINES = [
+  '[  OK  ] Started Load Kernel Modules.',
+  '[  OK  ] Started udev Kernel Device Manager.',
+  '[  OK  ] Mounted /boot (SSD detectado).',
+  '[  OK  ] Started Network Manager.',
+  '[  OK  ] Started BuildMaster Login Service.',
+  '[  OK  ] Reached target Basic System.',
+  '[  OK  ] Started GNOME Display Manager.',
+  '[  OK  ] Reached target Graphical Interface.',
+];
+function runLinuxBootLog(){
+  const cont = document.getElementById('osb-linux-boot');
+  if(!cont) return;
+  cont.innerHTML = '';
+  LINUX_BOOT_LINES.forEach((linea, i) => {
+    setTimeout(() => {
+      if(!document.getElementById('osb-linux-boot')) return;
+      const p = document.createElement('div');
+      p.className = 'osb-boot-line';
+      p.textContent = linea;
+      cont.appendChild(p);
+    }, i * 230);
+  });
+}
+
+function renderOsDesktopFull(osKey){
+  const os = OS_INFO[osKey];
+  const overlay = document.getElementById('os-boot-overlay');
+  overlay.className = 'osb-' + osKey;
+
+  let html = `<div class="osb-wallpaper"></div><div class="osb-desktop">`;
+
+  if(osKey === 'windows'){
+    html += `
+      <div class="osb-desktop-icons">
+        <div class="osb-icon"><div class="osb-icon-glyph">🖥️</div><div class="osb-icon-label">Este equipo</div></div>
+        <div class="osb-icon"><div class="osb-icon-glyph">🗑️</div><div class="osb-icon-label">Papelera</div></div>
+        <div class="osb-icon"><div class="osb-icon-glyph">🎮</div><div class="osb-icon-label">Juego Demo</div></div>
+      </div>
+      <div class="osb-taskbar">
+        <div class="osb-start"><span></span><span></span><span></span><span></span></div>
+        <div class="osb-searchbar">🔍 Buscar</div>
+        <div class="osb-taskbar-apps">
+          <span style="background:#00c8ff"></span><span style="background:#ff6a00"></span><span style="background:#8a2be2"></span>
+        </div>
+        <div class="osb-tray">
+          <span>📶</span><span>🔊</span><span>🔋</span>
+          <div class="osb-clock" id="osb-clock"></div>
+        </div>
+      </div>`;
+  } else if(osKey === 'linux'){
+    html += `
+      <div class="osb-topbar">
+        <span>Actividades</span>
+        <span id="osb-clock"></span>
+        <span>📶 🔊 ⏻</span>
+      </div>
+      <div class="osb-dock">
+        <span style="background:rgba(255,255,255,.08)">📁</span>
+        <span style="background:rgba(255,255,255,.08)">🌐</span>
+        <span style="background:rgba(255,255,255,.08)">🖼️</span>
+        <span style="background:rgba(255,176,32,.25)">⌨️</span>
+      </div>
+      <div class="osb-desktop-icons">
+        <div class="osb-icon"><div class="osb-icon-glyph">🏠</div><div class="osb-icon-label">Home</div></div>
+        <div class="osb-icon"><div class="osb-icon-glyph">🗑️</div><div class="osb-icon-label">Papelera</div></div>
+      </div>
+      <div class="osb-terminal">
+        <div class="osb-terminal-bar"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+        <div class="osb-terminal-body">Linux buildmaster 6.8.0-generic
+Distro: Ubuntu-like (BuildMaster Edition)
+<span class="prompt">user@buildmaster</span>:~$ <span class="osb-cursor"></span></div>
+      </div>`;
+  } else {
+    html += `
+      <div class="osb-menubar">
+        <div class="osb-menu-left"><div class="osb-dot-logo"></div><b>Finder</b><span>Archivo</span><span>Edición</span><span>Vista</span></div>
+        <div class="osb-menu-right"><span>📶</span><span>🔊</span><span>🔋</span><span id="osb-clock"></span></div>
+      </div>
+      <div class="osb-desktop-icons">
+        <div class="osb-icon"><div class="osb-icon-glyph">💽</div><div class="osb-icon-label">Macintosh HD</div></div>
+      </div>
+      <div class="osb-dock-wrap">
+        <div class="osb-dock">
+          <span style="background:#3fa9f5">🌐</span>
+          <span style="background:#34c759">💬</span>
+          <span style="background:#ff453a">🎵</span>
+          <span style="background:#ffd60a">📁</span>
+          <span style="background:#af52de">🎨</span>
+          <span style="background:#5e5ce6">⚙️</span>
+        </div>
+      </div>`;
+  }
+
+  html += `<div class="osb-caption">Escritorio de <b style="color:${os.color}">${os.name}</b> — así se vería en una laptop real</div>`;
+  html += `</div>`;
+  overlay.innerHTML = html;
+  startOsbClock();
+
+  setTimeout(() => {
+    overlay.className = 'hidden';
+    overlay.innerHTML = '';
+    clearInterval(osbClockInterval);
+    finishBootAndScore(osKey);
+  }, 3200);
+}
+
+function startOsbClock(){
+  clearInterval(osbClockInterval);
+  const tick = () => {
+    const el = document.getElementById('osb-clock');
+    if(!el) return;
+    const now = new Date();
+    const time = now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+    const date = now.toLocaleDateString('es-MX', {weekday:'short', day:'numeric', month:'short'});
+    el.innerHTML = `${time}<small>${date}</small>`;
+  };
+  tick();
+  osbClockInterval = setInterval(tick, 1000);
 }
 
 function spinFans(on){
@@ -1254,6 +1952,34 @@ document.getElementById('btn-glossary').addEventListener('click', ()=>{
 document.getElementById('btn-close-glossary').addEventListener('click', ()=>{
   document.getElementById('glossary-overlay').classList.add('hidden');
 });
+
+document.getElementById('menu-item-mantenimiento').addEventListener('click', (e)=>{
+  e.preventDefault();
+  document.getElementById('maintenance-overlay').classList.remove('hidden');
+  document.getElementById('menu-juegos').classList.remove('show');
+});
+document.getElementById('btn-close-maintenance').addEventListener('click', ()=>{
+  document.getElementById('maintenance-overlay').classList.add('hidden');
+});
+
+/* Menú "Más Juegos": abrir/cerrar con el botón, cerrar al tocar afuera o con Escape */
+const btnMasJuegos = document.getElementById('btn-mas-juegos');
+const menuJuegos = document.getElementById('menu-juegos');
+if(btnMasJuegos && menuJuegos){
+  btnMasJuegos.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    menuJuegos.classList.remove('hidden');
+    menuJuegos.classList.toggle('show');
+  });
+  document.addEventListener('click', (e)=>{
+    if(!menuJuegos.contains(e.target) && e.target!==btnMasJuegos){
+      menuJuegos.classList.remove('show');
+    }
+  });
+  document.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape') menuJuegos.classList.remove('show');
+  });
+}
 
 document.getElementById('btn-reset').addEventListener('click', ()=>{
   Object.keys(state.installed).forEach(k=> state.installed[k]=false);
@@ -1369,6 +2095,74 @@ function init(){
   setTimeout(openTutorial, 400);
 }
 init();
+
+/* ---------------------------------------------------------------
+   16. WIDGET: CALIFICAR EL SITIO
+   --------------------------------------------------------------- */
+(function initRateWidget(){
+  const widget = document.getElementById('rate-widget');
+  const head = document.getElementById('rate-head');
+  const toggleBtn = document.getElementById('rate-toggle');
+  const thanks = document.getElementById('rate-thanks');
+  const buttons = widget.querySelectorAll('.rate-emoji-btn');
+
+  const STORAGE_KEY = 'buildmaster-rating';
+
+  function readStoredRating(){
+    try{
+      return localStorage.getItem(STORAGE_KEY);
+    }catch(e){
+      return null;
+    }
+  }
+  function storeRating(value){
+    try{
+      localStorage.setItem(STORAGE_KEY, value);
+    }catch(e){ /* almacenamiento no disponible: seguimos sin persistir */ }
+  }
+
+  function selectRating(value, opts){
+    opts = opts || {};
+    buttons.forEach(b => b.classList.toggle('selected', b.dataset.rating === value));
+    if(!opts.silent){
+      thanks.classList.add('show');
+      storeRating(value);
+    }
+  }
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectRating(btn.dataset.rating);
+    });
+  });
+
+  head.addEventListener('click', () => {
+    widget.classList.toggle('collapsed');
+    toggleBtn.textContent = widget.classList.contains('collapsed') ? '▸' : '▾';
+  });
+
+  // si ya había una calificación guardada en este navegador, la mostramos
+  const prev = readStoredRating();
+  if(prev){
+    selectRating(prev, { silent:true });
+  }
+})();
 </script>
+<!-- ============ WIDGET: CALIFICAR EL SITIO ============ -->
+<div id="rate-widget">
+  <div class="rate-head" id="rate-head">
+    <div class="rate-title">⭐ ¿Qué te pareció?</div>
+    <button class="rate-toggle" id="rate-toggle" aria-label="Contraer/expandir">▾</button>
+  </div>
+  <div class="rate-body" id="rate-body">
+    <div class="rate-emojis">
+      <button class="rate-emoji-btn" data-rating="bueno" title="Bueno">😃<span class="rate-label">Bueno</span></button>
+      <button class="rate-emoji-btn" data-rating="bien" title="Bien">🙂<span class="rate-label">Bien</span></button>
+      <button class="rate-emoji-btn" data-rating="mejorar" title="Podría mejorar">😕<span class="rate-label">Mejorar</span></button>
+    </div>
+    <div class="rate-thanks" id="rate-thanks">¡Gracias por tu opinión! 🙌</div>
+  </div>
+</div>
+
 </body>
 </html>
