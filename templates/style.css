@@ -34,3 +34,27 @@
   box-shadow: 0 0 10px rgba(0, 255, 102, 0.6), inset 0 0 5px rgba(0, 255, 102, 0.3);
   cursor: pointer;
 }
+/* Estilo por defecto (para laptops y pantallas grandes) */
+.terminal-box {
+    width: 700px;
+    max-width: 100%; /* Evita que desborde */
+    padding: 20px;
+}
+
+/* Estilo para teléfonos celulares (pantallas menores a 768px de ancho) */
+@media (max-width: 768px) {
+    body {
+        padding: 10px; /* Margen más pequeño en móviles */
+    }
+    
+    .terminal-box {
+        width: 100%; /* Ocupa toda la pantalla del teléfono */
+        padding: 10px;
+        box-sizing: border-box;
+    }
+
+    /* Puedes ajustar tamaños de fuente si es necesario */
+    .terminal-header {
+        font-size: 12px;
+    }
+}

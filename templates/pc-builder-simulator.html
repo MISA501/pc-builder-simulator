@@ -2,10 +2,12 @@
 
 <html lang="es">
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BUILD://MASTER — Simulador de Ensamblaje PC</title>
+
 <style>
 /* ============================================================
    DESIGN TOKENS — paleta estilo Razer/Corsair
@@ -146,7 +148,7 @@ canvas#particles{
 .part-card{
   position:relative;
   display:flex; align-items:center; gap:12px;
-  padding:12px 12px;
+  padding:12px 38px 12px 12px;
   background:linear-gradient(160deg,#141a24,#0d1119);
   border:1px solid var(--border-soft);
   border-radius:var(--radius-md);
@@ -177,23 +179,47 @@ canvas#particles{
 .part-name{ font-weight:700; font-size:14px; line-height:1.2; }
 .part-sub{ font-size:11.5px; color:var(--text-lo); }
 
-/* tooltip educativo */
-.tooltip{
-  position:absolute; left:100%; top:0; margin-left:12px; width:250px;
-  background:linear-gradient(160deg,#151b26,#0b0f16);
-  border:1px solid var(--accent);
-  border-radius:var(--radius-md);
-  padding:14px; font-size:13px; line-height:1.5; color:var(--text-hi);
-  box-shadow:0 12px 30px rgba(0,0,0,0.55), 0 0 20px var(--neon-dim);
-  opacity:0; pointer-events:none; transform:translateX(-6px);
-  transition:opacity .2s ease, transform .2s ease;
-  z-index:50;
+/* botón "ℹ️" — abre el detalle de la pieza en una ventana centrada,
+   así la explicación nunca queda tapada debajo de otra pieza (ej. el CPU) */
+.info-btn{
+  position:absolute; top:8px; right:8px;
+  width:24px; height:24px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,255,136,0.12); border:1px solid var(--neon-dim);
+  color:var(--accent); font-family:var(--font-display); font-size:12px; font-weight:700;
+  cursor:pointer; z-index:5; transition:transform .15s ease, background .2s ease;
 }
-.part-card:hover .tooltip{ opacity:1; transform:translateX(0); }
-.tooltip b{ color:var(--accent); display:block; margin-bottom:4px; font-size:13px;}
-@media (max-width:1100px){
-  .tooltip{ left:0; top:100%; margin-left:0; margin-top:10px; width:100%; }
+.info-btn:hover{ transform:scale(1.12); background:rgba(0,255,136,0.22); }
+.part-card.installed .info-btn{ pointer-events:auto; opacity:1; }
+
+/* ============================================================
+   DICCIONARIO DE INFORMÁTICA
+   ============================================================ */
+.dict-card{ max-width:640px; max-height:84vh; overflow-y:auto; }
+.dict-terms{
+  display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;
+  max-height:180px; overflow-y:auto; padding-right:2px;
 }
+.dict-term-btn{
+  font-family:var(--font-body); font-weight:700; font-size:12.5px;
+  color:var(--text-hi); background:linear-gradient(160deg,#161c26,#0f141c);
+  border:1px solid var(--border-soft); border-radius:999px;
+  padding:7px 14px; cursor:pointer; transition:all .18s ease;
+}
+.dict-term-btn:hover{ border-color:var(--accent); box-shadow:0 0 12px var(--neon-dim); }
+.dict-term-btn.active{ background:linear-gradient(160deg, var(--neon), #00c46e); color:#04140b; border-color:transparent; }
+.dict-definition{
+  background:linear-gradient(160deg,#141a24,#0d1119);
+  border:1px solid var(--border-soft); border-radius:var(--radius-md);
+  padding:16px; min-height:90px; font-size:13.5px; line-height:1.6; color:var(--text-hi);
+}
+.dict-definition b{ color:var(--accent); display:block; margin-bottom:6px; font-size:14px; }
+.dict-definition-empty{ color:var(--text-lo); font-size:13px; }
+
+.part-detail-icon{ width:64px; height:64px; margin:0 auto; padding:10px; border-radius:14px;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.08), transparent 60%), #0a0e14;
+  border:1px solid rgba(255,255,255,0.06); }
+.part-detail-icon svg{ width:100%; height:100%; display:block; }
 
 /* ============================================================
    CASE / MOTHERBOARD VISUAL
@@ -433,6 +459,14 @@ canvas#particles{
   display:flex; align-items:center; justify-content:center; padding:20px;
 }
 #glossary-overlay.hidden{ display:none; }
+
+/* diccionario de términos + detalle de pieza seleccionada */
+#dictionary-overlay, #part-detail-overlay{
+  position:fixed; inset:0; z-index:230;
+  background:rgba(3,5,8,0.85); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#dictionary-overlay.hidden, #part-detail-overlay.hidden{ display:none; }
 
 /* modal de detalles del SO elegido (programas / distros / comandos) */
 #os-details-overlay{
@@ -843,6 +877,7 @@ canvas#particles{
     <div class="topbar-actions">
       <button class="btn" id="btn-tutorial">📘 Tutorial</button>
       <button class="btn" id="btn-glossary">📖 BIOS y SO</button>
+      <button class="btn" id="btn-dictionary">📚 Diccionario</button>
       <button class="btn" id="btn-rgb">🌈 Modo RGB</button>
       <button class="btn" id="btn-reset">🔄 Reiniciar</button>
       <div class="games-menu-wrap">
@@ -1052,6 +1087,30 @@ canvas#particles{
   </div>
 </div>
 
+<!-- ============ DICCIONARIO DE INFORMÁTICA ============ -->
+<div id="dictionary-overlay" class="hidden">
+  <div class="tutorial-card dict-card">
+    <h3 style="font-family:var(--font-display); color:var(--accent); font-size:15px; letter-spacing:1px; margin:0 0 4px;">📚 DICCIONARIO DE INFORMÁTICA</h3>
+    <p style="font-size:12.5px; color:var(--text-lo); margin:0 0 14px; line-height:1.5;">Toca una palabra para ver qué significa.</p>
+    <div class="dict-terms" id="dict-terms"><!-- inyectado por JS --></div>
+    <div class="dict-definition" id="dict-definition">
+      <div class="dict-definition-empty">👆 Elige un término de la lista para ver su definición aquí.</div>
+    </div>
+    <button class="btn primary" id="btn-close-dictionary" style="width:100%; justify-content:center; margin-top:14px;">Cerrar</button>
+  </div>
+</div>
+
+<!-- ============ DETALLE DE UNA PIEZA (al seleccionarla) ============ -->
+<div id="part-detail-overlay" class="hidden">
+  <div class="tutorial-card" style="max-width:420px;">
+    <div class="part-detail-icon" id="part-detail-icon"></div>
+    <h3 id="part-detail-name" style="font-family:var(--font-display); color:var(--accent); font-size:15px; letter-spacing:1px; margin:10px 0 4px; text-align:center;"></h3>
+    <p id="part-detail-sub" style="font-size:12px; color:var(--text-lo); margin:0 0 14px; text-align:center;"></p>
+    <p id="part-detail-desc" style="font-size:13.5px; line-height:1.6; color:var(--text-hi); margin:0 0 16px;"></p>
+    <button class="btn primary" id="btn-close-part-detail" style="width:100%; justify-content:center;">Entendido</button>
+  </div>
+</div>
+
 <!-- ============ DETALLES DEL SO ELEGIDO (programas / distros / comandos) ============ -->
 <div id="os-details-overlay" class="hidden">
   <div class="tutorial-card" style="max-width:540px; max-height:82vh; overflow-y:auto;">
@@ -1186,6 +1245,61 @@ const OS_INFO = {
   }
 };
 
+/* Diccionario de términos de informática, con analogías simples */
+const DICTIONARY = [
+  { term:'CPU', def:'El "cerebro" de la PC. Ejecuta las instrucciones de los programas y hace todos los cálculos.' },
+  { term:'RAM', def:'Memoria de trabajo temporal. Guarda lo que estás usando en el momento; se borra al apagar la PC.' },
+  { term:'GPU', def:'Tarjeta gráfica. Se encarga de dibujar todo lo que ves en pantalla, en especial en juegos y video.' },
+  { term:'SSD', def:'Unidad de estado sólido. Almacenamiento permanente y muy rápido, sin partes que giran.' },
+  { term:'HDD', def:'Disco duro tradicional. Guarda datos de forma permanente usando discos que giran; más lento que un SSD pero más barato por GB.' },
+  { term:'Placa madre (Motherboard)', def:'La "mesa" donde se conectan todas las piezas: CPU, RAM, GPU, discos y cables. Permite que se comuniquen entre sí.' },
+  { term:'PSU (Fuente de poder)', def:'Convierte la electricidad de la pared en la energía correcta para cada pieza de la PC.' },
+  { term:'BIOS / UEFI', def:'El primer programa que corre la PC al encenderla, antes del sistema operativo. Revisa que el hardware funcione bien.' },
+  { term:'Sistema Operativo (SO)', def:'El programa principal que administra todo: archivos, programas y la comunicación con el hardware. Ej: Windows, Linux, macOS.' },
+  { term:'Caché', def:'Una memoria muy pequeña y súper rápida dentro del CPU que guarda datos de uso frecuente para no tener que ir hasta la RAM.' },
+  { term:'Chipset', def:'Un chip en la placa madre que ayuda al CPU a comunicarse con los puertos USB, SATA y otros componentes.' },
+  { term:'VRM', def:'Circuito que regula el voltaje que le llega al CPU para que reciba energía estable.' },
+  { term:'Bus de datos', def:'El "camino" por donde viajan los datos entre piezas, como la RAM o la GPU, dentro de la placa madre.' },
+  { term:'PCIe', def:'Tipo de ranura de alta velocidad donde se conecta la tarjeta gráfica u otras tarjetas de expansión.' },
+  { term:'SATA', def:'Tipo de conexión usada para discos duros, SSD y unidades ópticas.' },
+  { term:'USB', def:'Puerto y estándar para conectar dispositivos externos: mouse, teclado, memorias, celulares, etc.' },
+  { term:'Núcleo (Core)', def:'Cada "trabajador" dentro del CPU capaz de procesar tareas. Un CPU puede tener varios núcleos trabajando al mismo tiempo.' },
+  { term:'Frecuencia (GHz)', def:'Qué tan rápido trabaja el CPU, medida en gigahertz. Más GHz suele significar más velocidad (aunque no es lo único que importa).' },
+  { term:'Overclock', def:'Hacer que una pieza (como el CPU o la GPU) trabaje más rápido de lo que trae de fábrica, a cambio de generar más calor.' },
+  { term:'Driver (Controlador)', def:'Un programa que le "enseña" al sistema operativo cómo hablar con una pieza específica de hardware, como la GPU.' },
+  { term:'Kernel', def:'El "núcleo" del sistema operativo: la parte que controla directamente el hardware y reparte los recursos de la PC.' },
+  { term:'Firmware', def:'Un programa pequeño grabado dentro de una pieza de hardware (como la BIOS o un SSD) que la hace funcionar.' },
+  { term:'Bit y Byte', def:'El bit es la unidad más pequeña de información (0 o 1). Un byte son 8 bits juntos; con ellos se mide el tamaño de archivos.' },
+  { term:'Ancho de banda', def:'La cantidad de datos que pueden viajar por un cable o bus en un tiempo determinado, como el ancho de una tubería.' }
+];
+
+function renderDictionary(){
+  const wrap = document.getElementById('dict-terms');
+  wrap.innerHTML = '';
+  DICTIONARY.forEach((entry, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'dict-term-btn';
+    btn.type = 'button';
+    btn.textContent = entry.term;
+    btn.addEventListener('click', () => {
+      wrap.querySelectorAll('.dict-term-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('dict-definition').innerHTML = `<b>${entry.term}</b>${entry.def}`;
+    });
+    wrap.appendChild(btn);
+  });
+}
+renderDictionary();
+
+document.getElementById('btn-dictionary').addEventListener('click', ()=>{
+  document.getElementById('dict-definition').innerHTML = '<div class="dict-definition-empty">👆 Elige un término de la lista para ver su definición aquí.</div>';
+  document.querySelectorAll('#dict-terms .dict-term-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('dictionary-overlay').classList.remove('hidden');
+});
+document.getElementById('btn-close-dictionary').addEventListener('click', ()=>{
+  document.getElementById('dictionary-overlay').classList.add('hidden');
+});
+
 /* ---------------------------------------------------------------
    2. ESTADO DEL JUEGO
    --------------------------------------------------------------- */
@@ -1272,12 +1386,12 @@ function renderTray(){
     card.draggable = !state.installed[id];
     card.id = 'card-' + id;
     card.innerHTML = `
+      <button class="info-btn" data-id="${id}" title="¿Qué es esto?" aria-label="Ver información de ${p.name}">i</button>
       <div class="part-icon">${iconSvg(p.icon)}</div>
       <div class="part-info">
         <div class="part-name">${p.name}</div>
         <div class="part-sub">${p.sub}</div>
       </div>
-      <div class="tooltip"><b>¿Para qué sirve?</b>${p.desc}</div>
     `;
     card.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', id);
@@ -1287,7 +1401,33 @@ function renderTray(){
     attachTouchDrag(card, id);
     tray.appendChild(card);
   });
+
+  // botón "i" de cada pieza: abre el detalle en una ventana centrada
+  // (así la explicación nunca queda tapada debajo de otra pieza, como pasaba
+  // antes con el CPU al usar un tooltip flotante)
+  tray.querySelectorAll('.info-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      showPartDetail(btn.dataset.id);
+    });
+    // evita que tocar el botón dispare el arrastre táctil de la tarjeta
+    btn.addEventListener('touchstart', e => e.stopPropagation());
+  });
 }
+
+function showPartDetail(id){
+  const p = PARTS[id];
+  if(!p) return;
+  document.getElementById('part-detail-icon').innerHTML = iconSvg(p.icon);
+  document.getElementById('part-detail-name').textContent = p.name;
+  document.getElementById('part-detail-sub').textContent = p.sub;
+  document.getElementById('part-detail-desc').innerHTML = p.desc;
+  document.getElementById('part-detail-overlay').classList.remove('hidden');
+}
+document.getElementById('btn-close-part-detail').addEventListener('click', ()=>{
+  document.getElementById('part-detail-overlay').classList.add('hidden');
+});
 
 /* ---------------------------------------------------------------
    4-b. DRAG & DROP TÁCTIL — la API nativa de HTML5 (dragstart/drop)
@@ -2157,6 +2297,23 @@ init();
     <div class="rate-thanks" id="rate-thanks">¡Gracias por tu opinión! 🙌</div>
   </div>
 </div>
+<script>
+document.querySelectorAll(".rate-emoji-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    fetch("/rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: btn.dataset.rating })
+    })
+    .then(res => res.json())
+    .then(data => {
+      // Mostrar mensaje de agradecimiento
+      document.getElementById("rate-thanks").style.display = "block";
+    })
+    .catch(err => console.error("Error al enviar reacción:", err));
+  });
+});
+</script>
 
 </body>
 </html>

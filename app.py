@@ -1,5 +1,8 @@
 import os
 from flask import Flask, render_template
+import smtplib
+from email.mime.text import MIMEText
+from flask import request, jsonify
 
 app = Flask(__name__)
 
@@ -48,5 +51,33 @@ def pc_builder_pro():
 if __name__ == "__main__":
     puerto = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=puerto, debug=False)
+@app.route("/rate", methods=["POST"])
+def rate():
+    data = request.json
+    reaction = data.get("rating")
+
+    # --- Guardar en archivo ---
+    with open("reacciones.txt", "a", encoding="utf-8") as f:
+        f.write(reaction + "\n")
+
+    # --- Enviar correo ---
+    remitente = "misaelchavez856@gmail.com"
+    destinatario = "misaelchavez856@gmail.com"  # puede ser el mismo o otro
+    contraseña = "Laarmadura dedios.1"  # contraseña de aplicación de Gmail
+
+    mensaje = MIMEText(f"Se recibió una nueva reacción: {reaction}")
+    mensaje["Subject"] = "Nueva reacción en tu sitio"
+    mensaje["From"] = remitente
+    mensaje["To"] = destinatario
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
+            servidor.login(remitente, contraseña)
+            servidor.sendmail(remitente, destinatario, mensaje.as_string())
+        print("Correo enviado con éxito")
+    except Exception as e:
+        print("Error al enviar correo:", e)
+
+    return jsonify({"message": "Gracias por tu opinión"})
 
 
