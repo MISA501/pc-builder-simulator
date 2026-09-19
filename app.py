@@ -1,8 +1,7 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 import smtplib
 from email.mime.text import MIMEText
-from flask import request, jsonify
 
 app = Flask(__name__)
 
@@ -48,9 +47,15 @@ def macos_game():
 def pc_builder_pro():
     return render_template("pc-builder-pro-2d.html")
 
-if __name__ == "__main__":
-    puerto = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=puerto, debug=False)
+
+# ---------------------------------------------------------------
+# IMPORTANTE: esta ruta debe registrarse ANTES de app.run().
+# app.run() bloquea la ejecución del script mientras el servidor
+# está corriendo, así que cualquier @app.route colocado después
+# de esa línea nunca llega a registrarse. Eso era lo que causaba
+# el error "Unexpected token '<'": Flask respondía con su página
+# 404 en HTML porque no conocía la ruta /rate.
+# ---------------------------------------------------------------
 @app.route("/rate", methods=["POST"])
 def rate():
     data = request.json
@@ -63,21 +68,31 @@ def rate():
     # --- Enviar correo ---
     remitente = "misaelchavez856@gmail.com"
     destinatario = "misaelchavez856@gmail.com"  # puede ser el mismo o otro
-    contraseña = "Laarmadura dedios.1"  # contraseña de aplicación de Gmail
 
-    mensaje = MIMEText(f"Se recibió una nueva reacción: {reaction}")
-    mensaje["Subject"] = "Nueva reacción en tu sitio"
-    mensaje["From"] = remitente
-    mensaje["To"] = destinatario
+    # La contraseña ya NO va escrita en el código: se lee de una
+    # variable de entorno llamada GMAIL_APP_PASSWORD. Así, si subes
+    # este archivo a GitHub o lo compartes, la contraseña no queda expuesta.
+    contraseña = os.environ.get("GMAIL_APP_PASSWORD")
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
-            servidor.login(remitente, contraseña)
-            servidor.sendmail(remitente, destinatario, mensaje.as_string())
-        print("Correo enviado con éxito")
-    except Exception as e:
-        print("Error al enviar correo:", e)
+    if not contraseña:
+        print("⚠️ No se configuró la variable de entorno GMAIL_APP_PASSWORD; se omite el envío de correo.")
+    else:
+        mensaje = MIMEText(f"Se recibió una nueva reacción: {reaction}")
+        mensaje["Subject"] = "Nueva reacción en tu sitio"
+        mensaje["From"] = remitente
+        mensaje["To"] = destinatario
+
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
+                servidor.login(remitente, contraseña)
+                servidor.sendmail(remitente, destinatario, mensaje.as_string())
+            print("Correo enviado con éxito")
+        except Exception as e:
+            print("Error al enviar correo:", e)
 
     return jsonify({"message": "Gracias por tu opinión"})
 
 
+if __name__ == "__main__":
+    puerto = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=puerto, debug=False)
