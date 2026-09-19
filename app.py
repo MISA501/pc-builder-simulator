@@ -47,6 +47,10 @@ def macos_game():
 def pc_builder_pro():
     return render_template("pc-builder-pro-2d.html")
 
+@app.route("/laboratorio-encriptado")
+def laboratorio_encriptado():
+    return render_template("laboratorio-encriptado.html")
+
 
 # ---------------------------------------------------------------
 # IMPORTANTE: esta ruta debe registrarse ANTES de app.run().

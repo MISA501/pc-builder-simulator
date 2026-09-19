@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Laboratorio de Encriptado</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+      color: #0f0;
+      font-family: monospace;
+      text-align: center;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px;
+      border-radius: 5px;
+      border: none;
+    }
+    button {
+      background: #0f0;
+      color: #111;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: cyan;
+      color: black;
+    }
+    .panel {
+      margin: 20px auto;
+      padding: 15px;
+      border: 2px solid #0f0;
+      width: 80%;
+      background: #222;
+      border-radius: 10px;
+      box-shadow: 0 0 15px #0f0;
+    }
+    .resultado {
+      font-size: 18px;
+      margin-top: 10px;
+      color: cyan;
+      transition: all 0.5s ease;
+    }
+    .explicacion {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #ff0;
+    }
+    .highlight {
+      color: yellow;
+      text-shadow: 0 0 10px yellow;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔐 Laboratorio de Encriptado</h1>
+  <p>Escribe un mensaje y observa cómo se transforma en distintos sistemas.</p>
+
+  <input type="text" id="mensaje" placeholder="Escribe tu mensaje aquí">
+  <button onclick="mostrarCodificaciones()">Encriptar</button>
+  <button onclick="reproducirMorse()">🔊 Reproducir Morse</button>
+
+  <div class="panel">
+    <h2>Binario</h2>
+    <div id="binario" class="resultado"></div>
+    <div class="explicacion">📖 Cada bloque de 8 bits corresponde a una letra según la tabla ASCII.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Morse</h2>
+    <div id="morse" class="resultado"></div>
+    <div class="explicacion">📖 Los puntos (·) y rayas (–) representan letras. Se escuchan como beeps cortos y largos.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Cifrado César (+3)</h2>
+    <div id="cesar" class="resultado"></div>
+    <div class="explicacion">📖 Cada letra se desplaza 3 posiciones en el alfabeto. Para descifrar, retrocede 3.</div>
+  </div>
+
+  <script>
+    const morseDict = {
+      "A": ".-", "B": "-...", "C": "-.-.", "D": "-..", "E": ".", "F": "..-.",
+      "G": "--.", "H": "....", "I": "..", "J": ".---", "K": "-.-", "L": ".-..",
+      "M": "--", "N": "-.", "O": "---", "P": ".--.", "Q": "--.-", "R": ".-.",
+      "S": "...", "T": "-", "U": "..-", "V": "...-", "W": ".--", "X": "-..-",
+      "Y": "-.--", "Z": "--..",
+      "0": "-----", "1": ".----", "2": "..---", "3": "...--", "4": "....-",
+      "5": ".....", "6": "-....", "7": "--...", "8": "---..", "9": "----."
+    };
+
+    let mensajeActual = "";
+
+    function textoABinario(texto) {
+      return texto.split("")
+        .map(c => c.charCodeAt(0).toString(2).padStart(8, "0"))
+        .join(" ");
+    }
+
+    function textoAMorse(texto) {
+      return texto.toUpperCase().split("")
+        .map(c => morseDict[c] || c)
+        .join(" ");
+    }
+
+    function cifradoCesar(texto) {
+      return texto.split("").map(c => {
+        let code = c.charCodeAt(0);
+        if (code >= 65 && code <= 90) {
+          return String.fromCharCode(((code - 65 + 3) % 26) + 65);
+        } else if (code >= 97 && code <= 122) {
+          return String.fromCharCode(((code - 97 + 3) % 26) + 97);
+        } else {
+          return c;
+        }
+      }).join("");
+    }
+
+    function mostrarCodificaciones() {
+      let mensaje = document.getElementById("mensaje").value.trim();
+      if (!mensaje) {
+        alert("Por favor escribe un mensaje.");
+        return;
+      }
+      mensajeActual = mensaje;
+
+      document.getElementById("binario").textContent = textoABinario(mensaje);
+      document.getElementById("morse").textContent = textoAMorse(mensaje);
+      document.getElementById("cesar").textContent = cifradoCesar(mensaje);
+
+      document.querySelectorAll(".resultado").forEach(el => {
+        el.classList.add("highlight");
+        setTimeout(() => el.classList.remove("highlight"), 1000);
+      });
+    }
+
+    function reproducirMorse() {
+      if (!mensajeActual) {
+        alert("Primero escribe y encripta un mensaje.");
+        return;
+      }
+      let morse = textoAMorse(mensajeActual);
+      let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      let tiempo = 0;
+
+      morse.split("").forEach(symbol => {
+        if (symbol === ".") {
+          beep(audioCtx, tiempo, 0.1);
+          tiempo += 0.2;
+        } else if (symbol === "-") {
+          beep(audioCtx, tiempo, 0.3);
+          tiempo += 0.4;
+        } else if (symbol === " ") {
+          tiempo += 0.5;
+        }
+      });
+    }
+
+    function beep(audioCtx, startTime, duration) {
+      let oscillator = audioCtx.createOscillator();
+      let gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+      oscillator.start(audioCtx.currentTime + startTime);
+      oscillator.stop(audioCtx.currentTime + startTime + duration);
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+
